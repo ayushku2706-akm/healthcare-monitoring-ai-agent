@@ -1,9 +1,8 @@
 import streamlit as st
 import os
-import time
 from datetime import datetime
-from threading import Thread
 from dotenv import load_dotenv
+from streamlit_autorefresh import st_autorefresh
 
 # ==========================================
 # ENVIRONMENT & PATH CONFIGURATION
@@ -19,61 +18,47 @@ import database as db
 db.init_db()
 
 # ==========================================
-# BACKGROUND BACKGROUND REMINDER THREAD LOGIC
-# ==========================================
-if "reminders_checked" not in st.session_state:
-    st.session_state.reminders_checked = {}
-
-def check_reminders_loop():
-    """Background loop running outside Streamlit context to monitor times."""
-    while True:
-        try:
-            current_time = datetime.now().strftime("%H:%M")
-            conn = db.get_db_connection()
-            meds = conn.execute("SELECT * FROM medications WHERE is_active = 1").fetchall()
-            conn.close()
-            
-            for med in meds:
-                # If current system time matches reminder time, flag it for a popup
-                if med['reminder_time'] == current_time:
-                    med_id = med['id']
-                    # Ensure we don't alert multiple times within the same minute
-                    if st.session_state.get(f"alert_triggered_{med_id}_{current_time}") is not True:
-                        st.session_state[f"alert_triggered_{med_id}_{current_time}"] = True
-                        st.session_state["active_reminder_popup"] = f"🔔 REMINDER: It is time to take your {med['medication_name']} ({med['dosage']})!"
-                        # Force Streamlit to rerun and show the message instantly
-                        st.rerun()
-        except Exception:
-            pass
-        time.sleep(10)  # Check every 10 seconds
-
-# Keep the background daemon loop running continuously across page reloads
-if "reminder_thread_started" not in st.session_state:
-    thread = Thread(target=check_reminders_loop, daemon=True)
-    thread.start()
-    st.session_state.reminder_thread_started = True
-
-# ==========================================
 # STREAMLIT UI SETUP & INITIALIZATION
 # ==========================================
 st.set_page_config(page_title="CareAI - Personal Health Companion", layout="wide")
 st.title("🏥 CareAI: Healthcare Monitoring Agent")
 
-# POPUP TRIGGER: If a background thread flags a reminder, flash a prominent message box
-if "active_reminder_popup" in st.session_state and st.session_state.active_reminder_popup:
-    st.toast(st.session_state.active_reminder_popup, icon="⚠️")
-    st.error(st.session_state.active_reminder_popup)
-    if st.button("Dismiss Reminder"):
-        st.session_state.active_reminder_popup = None
-        st.rerun()
+# AUTOMATED BACKGROUND TICKER: Refreshes every 10 seconds to process alarms
+st_autorefresh(interval=10000, key="datetimemonitor")
 
-# Keep running chat logs and agent engine alive
+# Keep running application states alive
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "agent" not in st.session_state:
     st.session_state.agent = HealthAgent()
+if "last_triggered_reminder" not in st.session_state:
+    st.session_state.last_triggered_reminder = ""
 
-# Create Layout: Left Dashboard Column, Right Chat Agent Column
+# ==========================================
+# LIVE ALARM REMINDER CHECKING PIPELINE
+# ==========================================
+current_time_str = datetime.now().strftime("%H:%M")
+
+conn = db.get_db_connection()
+active_meds = conn.execute("SELECT medication_name, dosage, reminder_time FROM medications WHERE is_active = 1").fetchall()
+conn.close()
+
+for med in active_meds:
+    if med['reminder_time'] == current_time_str:
+        reminder_key = f"{med['medication_name']}_{current_time_str}"
+        if st.session_state.last_triggered_reminder != reminder_key:
+            st.session_state.last_triggered_reminder = reminder_key
+            st.toast(f"🚨 MEDICATION ALARM: Take {med['medication_name']} NOW!", icon="🔔")
+            st.error(f"🚨 **LIVE REMINDER ALARM:** It is exactly {current_time_str}! Please take your scheduled dose of **{med['medication_name']}** ({med['dosage']}).")
+            try:
+                import winsound
+                winsound.MessageBeep()
+            except Exception:
+                pass
+
+# ==========================================
+# INTERFACE LAYOUT: DASHBOARD & CHAT
+# ==========================================
 col_dash, col_chat = st.columns([1, 1.2])
 
 # ==========================================
@@ -82,39 +67,85 @@ col_dash, col_chat = st.columns([1, 1.2])
 with col_dash:
     st.subheader("📊 Patient Tracking Dashboard")
     
-    # Medication Scheduler Panel
-    # Medication Scheduler Panel
-    with st.expander("💊 Schedule New Medication", expanded=True):
+    # Feature 1: Medication Scheduler Panel
+    with st.expander("💊 Schedule New Medication", expanded=False):
         med_name = st.text_input("Medication Name", placeholder="e.g., Metformin")
         dosage = st.text_input("Dosage Description", placeholder="e.g., 500mg once daily")
         remind_time = st.time_input("Set Reminder Time")
         
         if st.button("Save Schedule"):
             if med_name and dosage:
+                formatted_time = remind_time.strftime("%H:%M")
                 conn = db.get_db_connection()
                 cursor = conn.cursor()
                 cursor.execute(
-                    "INSERT INTO medications (medication_name, dosage, reminder_time) VALUES (?, ?, ?)",
-                    (med_name, dosage, remind_time.strftime("%H:%M"))
+                    "INSERT INTO medications (medication_name, dosage, reminder_time, is_active) VALUES (?, ?, ?, 1)",
+                    (med_name, dosage, formatted_time)
                 )
                 conn.commit()
                 conn.close()
-                st.success(f"✅ Registered tracking schedule for {med_name}!")
+                st.success(f"✅ Registered tracking schedule for {med_name} at {formatted_time}!")
                 st.rerun()
             else:
-                st.error("Please fill out both the Medication Name and Dosage fields.")
+                st.error("Please fill out both fields.")
 
-    # Live SQLite Data Feed View
-    st.markdown("### Active Tracked Prescriptions")
+    # Fetch active items from SQLite
     conn = db.get_db_connection()
-    meds = conn.execute("SELECT * FROM medications WHERE is_active = 1").fetchall()
+    meds = conn.execute("SELECT id, medication_name, dosage, reminder_time FROM medications WHERE is_active = 1").fetchall()
     conn.close()
-    
+
+    # View Current List
+    st.markdown("### Active Tracked Prescriptions")
     if meds:
         for med in meds:
             st.info(f"👉 **{med['medication_name']}** ({med['dosage']}) — Scheduled Daily at: `{med['reminder_time']}`")
     else:
         st.caption("No active medication items scheduled for tracking yet.")
+
+    # Feature 2: NEW! Update & Delete Management Panel
+    if meds:
+        st.markdown("---")
+        with st.expander("⚙️ Manage Existing Reminders", expanded=True):
+            # Create a selection map for the dropdown
+            med_options = {f"{m['medication_name']} ({m['reminder_time']})": m for m in meds}
+            selected_label = st.selectbox("Select a reminder to modify:", list(med_options.keys()))
+            selected_med = med_options[selected_label]
+            
+            # Form fields showing current values
+            update_dosage = st.text_input("Edit Dosage Description", value=selected_med['dosage'])
+            
+            # Parse existing time to display as default
+            try:
+                parsed_time = datetime.strptime(selected_med['reminder_time'], "%H:%M").time()
+            except Exception:
+                parsed_time = datetime.now().time()
+            update_time = st.time_input("Edit Reminder Time", value=parsed_time)
+            
+            col_update, col_delete = st.columns(2)
+            
+            # Update Action
+            with col_update:
+                if st.button("🔄 Update Reminder", use_container_width=True):
+                    conn = db.get_db_connection()
+                    conn.execute(
+                        "UPDATE medications SET dosage = ?, reminder_time = ? WHERE id = ?",
+                        (update_dosage, update_time.strftime("%H:%M"), selected_med['id'])
+                    )
+                    conn.commit()
+                    conn.close()
+                    st.success("Updated successfully!")
+                    st.rerun()
+                    
+            # Delete Action
+            with col_delete:
+                if st.button("🗑️ Delete Reminder", use_container_width=True, type="primary"):
+                    conn = db.get_db_connection()
+                    # Soft delete by setting is_active to 0
+                    conn.execute("UPDATE medications SET is_active = 0 WHERE id = ?", (selected_med['id'],))
+                    conn.commit()
+                    conn.close()
+                    st.warning(f"Removed tracker for {selected_med['medication_name']}.")
+                    st.rerun()
 
 # ==========================================
 # RIGHT COLUMN: CONVERSATIONAL AI COMPANION
@@ -122,12 +153,10 @@ with col_dash:
 with col_chat:
     st.subheader("💬 AI Health Companion Chat")
     
-    # Loop and print out running dialogue logs
     for role, text in st.session_state.chat_history:
         with st.chat_message(role):
             st.write(text)
             
-    # Chat Input Interface
     if user_query := st.chat_input("Ask a tracking question..."):
         with st.chat_message("user"):
             st.write(user_query)
