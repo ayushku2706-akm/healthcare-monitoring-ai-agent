@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"name": "healthcare-monitoring-ai-agent",
+			"path": "../healthcare-monitoring-ai-agent"
+		}
+	],
+	"settings": {}
+}

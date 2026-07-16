@@ -1,5 +1,44 @@
 import sqlite3
 import os
+import sqlite3
+import os
+
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "health_companion.db")
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # 1. Medications Table (Existing)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS medications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            medication_name TEXT NOT NULL,
+            dosage TEXT,
+            reminder_time TEXT,
+            is_active INTEGER DEFAULT 1
+        )
+    ''')
+    
+    # 2. NEW Table: Vitals Logs for dynamic charting
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS vitals_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            log_date TEXT DEFAULT CURRENT_DATE,
+            systolic_bp INTEGER,
+            glucose INTEGER
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "../data/health_store.db")
 
