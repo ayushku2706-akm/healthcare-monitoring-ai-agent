@@ -26,9 +26,9 @@ def call_gemini_with_retry(model, prompt, retries=5, delay=3):
             if i < retries - 1:
                 print(f"API Rate limit aa gayi. {delay} seconds baad retry kar rahe hain...")
                 time.sleep(delay)
-                delay *= 2  # Agli baar double wait karega (3s, 6s, 12s)
+                delay *= 2  
             else:
-                # Agar 5 baar mein bhi nahi chala tab error throw karega
+               
                 raise e
 
 
@@ -189,7 +189,11 @@ def generate_pdf_bytes(text_content: str) -> bytes:
     pdf.set_x(140)
     pdf.cell(55, 5, txt="Authorized Digital Sign-Off Stamp", ln=True, align="C")
     
-    return bytes(pdf.output(dest='S'))
+    # Agar aapka output string hai, toh use utf-8 mein encode karke bytes banayein:
+    output = pdf.output(dest='S')
+    if isinstance(output, str):
+        return output.encode('latin-1')  # FPDF ke liye 'latin-1' best rehta hai
+    return bytes(output)
 
 
 def calculate_detailed_bmi(weight_kg: float, height_cm: float, age_years: int) -> dict:
