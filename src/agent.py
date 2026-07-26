@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from fpdf import FPDF
 
 # Ensure pathing reads environment variables smoothly
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -39,6 +40,24 @@ class HealthAgent:
             "but conclude with a mandatory, prominent, professional disclaimer advising the user to consult a physician."
         ))
 
+    def generate_pdf_report(self, text_content, filename="Clinical_Report.pdf"):
+        # Unwanted symbols remove karein
+        clean_text = text_content.replace("?", "").replace("--", "").replace("**", "")
+        
+        pdf = FPDF()
+        pdf.add_page()
+        
+        for line in clean_text.split('\n'):
+            if line.strip().startswith("#"):
+                pdf.set_font("Arial", 'B', 14)
+                pdf.cell(200, 10, txt=line.replace("#", "").strip(), ln=True)
+            elif line.strip(): # Khali line ignore karne ke liye
+                pdf.set_font("Arial", '', 12)
+                pdf.multi_cell(0, 10, txt=line.strip())
+        
+        pdf.output(filename)
+        return filename
+
     def respond(self, chat_history, user_message):
         """
         Processes conversation safely with robust error handling layers.
@@ -73,33 +92,30 @@ class HealthAgent:
             )
         
     def analyze_medical_report(self, report_text: str) -> str:
-        """
-        Parses raw text from medical reports and structures clinical insights 
-        in conversational Hinglish written in English script.
-        """
         if not os.getenv("GOOGLE_API_KEY"):
-            return "❌ **Configuration Error:** Google API Key missing."
+            return "❌ Configuration Error: Google API Key missing."
 
         prompt = (
-            f"You are an empathetic, expert clinical AI assistant. Analyze the following raw medical report text "
-            f"and provide a highly professional, structured doctor-like analysis. "
-            f"CRITICAL: The response must be written in conversational HINGLISH (Hindi + English) using the English alphabet (Latin script). "
-            f"Do NOT use pure/heavy Hindi words like 'vyavasthit', 'pradaan', 'antargat', 'khaan-paan', 'parhez'. "
-            f"Instead, use normal day-to-day spoken language like 'Report summary', 'Blood sugar thoda high hai', 'Diet control', 'Regular exercise'.\n\n"
-            f"Please structure your response with these exact headings:\n"
-            f"1. **📋 Patient Profile Summary** (Extract Name, Age, Gender, Report Date, Referring Doctor if present)\n"
-            f"2. **📊 Lab Vitals Analysis (Key Findings)** (Highlight abnormal metrics like high Sugar, Cholesterol, or BP with their status and normal ranges)\n"
-            f"3. **🎯 Risk Assessment (Health Risk Analysis)** (Explain what these high values mean for the patient's future health based on their age in simple Hinglish)\n"
-            f"4. **🏃 Actionable Solutions & Recommendations (Prevention Plan)** (Give clear diet, exercise, and lifestyle advice to normalize their levels)\n\n"
-            f"Report Text:\n{report_text}\n\n"
-            f"At the very end, conclude with this exact bold warning in Hinglish:\n"
-            f"'⚠️ **MANDATORY CLINICAL DISCLAIMER:** Yeh analysis AI-generated hai aur sirf educational purposes ke liye hai. "
-            f"Yeh kisi professional doctor ki jagah nahi le sakta. Koi bhi lifestyle change ya medicine shuru karne se pehle "
-            f"apne primary doctor ya qualified medical professional se consult zaroor karein.'"
+            f"You are a Clinical AI. Analyze the report and provide a clean, professional report.\n"
+            f"STRICT FORMATTING RULES:\n"
+            f"1. Do NOT use '?', '--', or any special symbols for headings or lists.\n"
+            f"2. Use only Markdown for structure: Use # for main titles and ** for bold text.\n"
+            f"3. Use standard bullet points (-) for lists.\n"
+            f"4. Keep the Hinglish conversational but professional.\n\n"
+            f"Structure:\n"
+            f"# Patient Profile Summary\n(Name, Age, Gender, etc.)\n\n"
+            f"# Lab Vitals Analysis\n(Results in clean bullet points)\n\n"
+            f"# Risk Assessment\n(Analysis in paragraphs)\n\n"
+            f"# Actionable Solutions\n(Recommendations in bullet points)\n\n"
+            f"# Clinical Disclaimer\n(Add the mandatory disclaimer text)\n\n"
+            f"REPORT DATA: {report_text}"
         )
 
         try:
             response = self.llm.invoke(prompt)
-            return response.content
+            # Cleanup unwanted symbols manually as a safety layer
+            content = response.content
+            content = content.replace("?", "").replace("--", "").replace("::", ":")
+            return content
         except Exception as e:
-            return f"⚠️ **Failed to analyze report document:** {str(e)}"
+            return f"⚠️ Failed to analyze report: {str(e)}"
