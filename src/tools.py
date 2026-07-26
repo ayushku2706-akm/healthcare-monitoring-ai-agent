@@ -10,7 +10,7 @@ from datetime import datetime
 from fpdf import FPDF
 import time
 from google.api_core.exceptions import ResourceExhausted
-
+import pytz
 
 def call_gemini_with_retry(model, prompt, retries=5, delay=3):
     """
@@ -141,7 +141,8 @@ def generate_pdf_bytes(text_content: str) -> bytes:
     pdf.set_font("Helvetica", style="B", size=10)
     pdf.cell(45, 7, txt=" Generation Timestamp:", border=1, fill=True)
     pdf.set_font("Helvetica", size=10)
-    current_time = datetime.now().strftime("%d-%b-%Y %H:%M:%S")
+    ist_timezone = pytz.timezone('Asia/Kolkata')
+    current_time = datetime.now(ist_timezone)
     pdf.cell(50, 7, txt=f" {current_time}", border=1, ln=True)
     
     pdf.set_font("Helvetica", style="B", size=10)

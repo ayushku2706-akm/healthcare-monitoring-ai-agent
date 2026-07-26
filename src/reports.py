@@ -4,6 +4,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 import io
 from datetime import datetime
+import pytz
 
 def generate_health_report_pdf(patient_id: str, bmi_val: float, bmi_cat: str, risk_strata: str, clinical_insights: str) -> bytes:
     """
@@ -36,8 +37,10 @@ def generate_health_report_pdf(patient_id: str, bmi_val: float, bmi_cat: str, ri
     body_style = styles['BodyText']
     
     # Title & Metadata
+    
+    ist_timezone = pytz.timezone('Asia/Kolkata')
     story.append(Paragraph("CareAI Clinical Intelligence Summary Report", title_style))
-    story.append(Paragraph(f"<b>Generated On:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}", body_style))
+    story.append(Paragraph(f"<b>Generated On:</b> {datetime.now(ist_timezone).strftime('%Y-%m-%d %H:%M')}", title_style))
     story.append(Paragraph(f"<b>Patient Identifier:</b> {patient_id}", body_style))
     story.append(Spacer(1, 15))
     
