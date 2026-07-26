@@ -1,8 +1,11 @@
 import os
+import streamlit as st
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from fpdf import FPDF
+
+load_dotenv()
 
 # Ensure pathing reads environment variables smoothly
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -15,7 +18,14 @@ class HealthAgent:
         fallback_model = "gemini-2.0-flash"
         
         # Pull API key securely
-        api_key = os.getenv("GOOGLE_API_KEY")
+        api_key = (
+            st.secrets.get("GOOGLE_API_KEY")
+            if "GOOGLE_API_KEY" in st.secrets
+            else os.getenv("GOOGLE_API_KEY")
+        )
+
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY not found")
         
         try:
             self.llm = ChatGoogleGenerativeAI(
