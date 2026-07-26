@@ -335,8 +335,8 @@ with col_dash:
                 try:
                     prompt = f"Act as a clinical nutritionist. Create a comprehensive and healthy diet plan for a person whose goal is {health_goal}, physical activity level is {activity_level}, and dietary preference is {diet_pref}."
                     
-                    # Model name ko 'gemini-1.5-flash-latest' ya apne project wale working model se replace karein
-                    model = genai.GenerativeModel('gemini-1.5-flash-latest') 
+                    # Sahi model name use karein (jo aapke baki project mein chal raha hai)
+                    model = genai.GenerativeModel('gemini-1.5-flash') 
                     response = model.generate_content(prompt)
                     
                     if response and response.text:
