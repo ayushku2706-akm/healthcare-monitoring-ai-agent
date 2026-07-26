@@ -17,7 +17,6 @@ import pytz
 
 from streamlit_autorefresh import st_autorefresh
 count = st_autorefresh(interval=30000, limit=None, key="reminder_refresh_counter")
-
 # ENVIRONMENT & PATH CONFIGURATION
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, "..", ".env")
@@ -121,7 +120,8 @@ if "diet_fitness_plan" not in st.session_state: st.session_state.diet_fitness_pl
 @st.fragment(run_every=10)
 def medicine_alarm_polling_engine():
     ist_timezone = pytz.timezone('Asia/Kolkata')
-    current_time = datetime.now(ist_timezone)
+    current_ist_time = datetime.now(ist_timezone)
+    current_time_str = current_ist_time.strftime('%H:%M')
     
     with db.get_db_connection() as conn:
         active_meds = conn.execute("SELECT medication_name, dosage, reminder_time FROM medications WHERE is_active = 1").fetchall()

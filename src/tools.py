@@ -142,7 +142,7 @@ def generate_pdf_bytes(text_content: str) -> bytes:
     pdf.cell(45, 7, txt=" Generation Timestamp:", border=1, fill=True)
     pdf.set_font("Helvetica", size=10)
     ist_timezone = pytz.timezone('Asia/Kolkata')
-    current_time = datetime.now(ist_timezone)
+    current_time = datetime.now(ist_timezone).strftime('%Y-%m-%d %H:%M')
     pdf.cell(50, 7, txt=f" {current_time}", border=1, ln=True)
     
     pdf.set_font("Helvetica", style="B", size=10)
