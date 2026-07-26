@@ -326,27 +326,35 @@ with col_dash:
     # 4. SMART DIET PLANNER PANEL
     with tab_diet:
         st.markdown("### 🥗 AI Personalized Diet & Wellness Planner")
-        health_goal = st.selectbox("Apna Primary Fitness Goal Chunein:", ["Weight Loss Management", "Muscle Gain & Fitness", "Diabetes Sugar Control", "Heart Health & BP Control"])
-        activity_level = st.selectbox("Current Daily Physical Activity Kitna Hai?", ["Sedentary", "Lightly Active", "Moderately Active", "Very Active"])
-        diet_pref = st.radio("Dietary Preference:", ["Vegetarian 🥦", "Non-Vegetarian 🍗", "Vegan 🌱"], horizontal=True)
-        
+        health_goal = st.selectbox("Apna Primary Fitness Goal Chunein:", ["Muscle Gain & Fitness", "Weight Loss", "Maintain"])
+        activity_level = st.selectbox("Current Daily Physical Activity Kitna Hai?", ["Sedentary", "Active", "Moderate"])
+        diet_pref = st.radio("Dietary Preference:", ["Vegetarian 🥦", "Non-Vegetarian 🍗", "Vegan 🌱"])
+
+        # 1. Session state ko initialize karein agar pehle se nahi hai
+        if "diet_fitness_plan" not in st.session_state:
+            st.session_state.diet_fitness_plan = None
+
         if st.button("Generate Custom Plan", type="primary"):
             with st.spinner("Generating your custom diet plan..."):
                 try:
                     prompt = f"Act as a clinical nutritionist. Create a comprehensive and healthy diet plan for a person whose goal is {health_goal}, physical activity level is {activity_level}, and dietary preference is {diet_pref}."
                     
-                    # Updated working model name
                     model = genai.GenerativeModel('gemini-2.5-flash') 
                     response = model.generate_content(prompt)
                     
                     if response and response.text:
-                        st.success("Here is your AI Diet Plan:")
-                        st.markdown(f'<div class="plan-box">{response.text}</div>', unsafe_allow_html=True)
+                        # 2. Response ko session state mein save karein taaki wo gayab na ho
+                        st.session_state.diet_fitness_plan = response.text
                     else:
                         st.warning("No response generated. Please try again.")
                         
                 except Exception as e:
                     st.error(f"Error generating plan: {str(e)}")
+
+        # 3. Agar session state mein plan available hai, toh use hamesha display karein
+        if st.session_state.diet_fitness_plan:
+            st.success("Here is your AI Diet Plan:")
+            st.markdown(f'<div class="plan-box">{st.session_state.diet_fitness_plan}</div>', unsafe_allow_html=True)
 
     # 5. FAST INTERACTIVE CLINICAL INSIGHT MINER PANEL
     with tab_scraper:
