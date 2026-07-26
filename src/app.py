@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import sqlite3 
 import io 
 import pytz
+import google.generativeai as genai
 
 
 from streamlit_autorefresh import st_autorefresh
@@ -332,18 +333,15 @@ with col_dash:
         if st.button("Generate Custom Plan", type="primary"):
             with st.spinner("Generating your custom diet plan..."):
                 try:
-                    prompt = f"Create a {diet_pref} diet plan for {health_goal} with {activity_level} activity level."
+                    prompt = f"Act as a clinical nutritionist. Create a comprehensive and healthy diet plan for a person whose goal is {health_goal}, physical activity level is {activity_level}, and dietary preference is {diet_pref}."
                     
-                    response = st.session_state.agent.invoke(prompt)
+                    # Direct Gemini model initialize karke generate karein
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    response = model.generate_content(prompt)
                     
-                    if isinstance(response, dict):
-                        output_text = response.get("output", str(response))
-                    else:
-                        output_text = str(response)
-                        
-                    if output_text:
+                    if response and response.text:
                         st.success("Here is your AI Diet Plan:")
-                        st.write(output_text)
+                        st.markdown(f'<div class="plan-box">{response.text}</div>', unsafe_allow_html=True)
                     else:
                         st.warning("No response generated. Please try again.")
                         
