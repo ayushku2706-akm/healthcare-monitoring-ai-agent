@@ -329,28 +329,26 @@ with col_dash:
         activity_level = st.selectbox("Current Daily Physical Activity Kitna Hai?", ["Sedentary", "Lightly Active", "Moderately Active", "Very Active"])
         diet_pref = st.radio("Dietary Preference:", ["Vegetarian 🥦", "Non-Vegetarian 🍗", "Vegan 🌱"], horizontal=True)
         
-        if st.button("Generate Custom Plan"):
-    with st.spinner("Generating your custom diet plan..."):
-        try:
-            prompt = f"Create a {diet_pref} diet plan for {health_goal} with {activity_level} activity level."
-            
-            # .run() ki jagah .invoke() try karein (ya jo aapke baaki tools/files mein use ho raha ho)
-            response = st.session_state.agent.invoke(prompt)
-            
-            # Agar response dictionary ya object hai, toh text extract karein:
-            if isinstance(response, dict):
-                output_text = response.get("output", str(response))
-            else:
-                output_text = str(response)
-                
-            if output_text:
-                st.success("Here is your AI Diet Plan:")
-                st.write(output_text)
-            else:
-                st.warning("No response generated. Please try again.")
-                
-        except Exception as e:
-            st.error(f"Error generating plan: {str(e)}")
+        if st.button("Generate Custom Plan", type="primary"):
+            with st.spinner("Generating your custom diet plan..."):
+                try:
+                    prompt = f"Create a {diet_pref} diet plan for {health_goal} with {activity_level} activity level."
+                    
+                    response = st.session_state.agent.invoke(prompt)
+                    
+                    if isinstance(response, dict):
+                        output_text = response.get("output", str(response))
+                    else:
+                        output_text = str(response)
+                        
+                    if output_text:
+                        st.success("Here is your AI Diet Plan:")
+                        st.write(output_text)
+                    else:
+                        st.warning("No response generated. Please try again.")
+                        
+                except Exception as e:
+                    st.error(f"Error generating plan: {str(e)}")
 
     # 5. FAST INTERACTIVE CLINICAL INSIGHT MINER PANEL
     with tab_scraper:
