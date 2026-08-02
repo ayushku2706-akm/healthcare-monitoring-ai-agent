@@ -17,12 +17,7 @@ class HealthAgent:
         primary_model = "gemini-2.5-flash"
         fallback_model = "gemini-2.0-flash"
         
-        # Pull API key securely
-        api_key = (
-            st.secrets.get("GOOGLE_API_KEY")
-            if "GOOGLE_API_KEY" in st.secrets
-            else os.getenv("GOOGLE_API_KEY")
-        )
+        api_key = os.getenv("GOOGLE_API_KEY")
 
         if not api_key:
             raise ValueError("GOOGLE_API_KEY not found")
@@ -51,7 +46,6 @@ class HealthAgent:
         ))
 
     def generate_pdf_report(self, text_content, filename="Clinical_Report.pdf"):
-        # Unwanted symbols remove karein
         clean_text = text_content.replace("?", "").replace("--", "").replace("**", "")
         
         pdf = FPDF()
@@ -61,7 +55,7 @@ class HealthAgent:
             if line.strip().startswith("#"):
                 pdf.set_font("Arial", 'B', 14)
                 pdf.cell(200, 10, txt=line.replace("#", "").strip(), ln=True)
-            elif line.strip(): # Khali line ignore karne ke liye
+            elif line.strip(): 
                 pdf.set_font("Arial", '', 12)
                 pdf.multi_cell(0, 10, txt=line.strip())
         
@@ -95,7 +89,6 @@ class HealthAgent:
             response = self.llm.invoke(messages)
             return response.content
         except Exception as e:
-            # Return the exact error to the UI chat stream instead of crashing out
             return (
                 f"⚠️ **AI Companion Communication Failure:** Something went wrong while connecting to the Gemini API servers. "
                 f"\n\n**Technical Details:** `{str(e)}`"
@@ -123,7 +116,6 @@ class HealthAgent:
 
         try:
             response = self.llm.invoke(prompt)
-            # Cleanup unwanted symbols manually as a safety layer
             content = response.content
             content = content.replace("?", "").replace("--", "").replace("::", ":")
             return content

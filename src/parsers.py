@@ -15,7 +15,7 @@ def extract_text_from_pdf(file_bytes) -> str:
                 
         extracted_string = "\n".join(text_content).strip()
         
-        # Fallback Check: Agar page layout mil raha hai par text elements zero hain
+    
         if not extracted_string:
             return "ERROR_SCANNED_IMAGE: Standard text stream not found in this PDF structure."
             

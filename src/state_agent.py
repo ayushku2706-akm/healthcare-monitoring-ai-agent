@@ -4,9 +4,8 @@ from langgraph.graph import StateGraph, START, END
 from pydantic import BaseModel, Field, field_validator
 import os
 
-# ==========================================
 # 1. HIPAA-COMPLIANT DATA VALIDATION SCHEMAS
-# ==========================================
+
 class HealthLogSchema(BaseModel):
     """Strict Pydantic structure checking for health data inconsistencies (HIPAA Layer)."""
     patient_id: str
@@ -22,9 +21,8 @@ class HealthLogSchema(BaseModel):
             raise ValueError(f"Unauthorized Role. Must be one of {allowed}")
         return v
 
-# ==========================================
 # 2. LANGGRAPH STATE DEFINITION
-# ==========================================
+
 class AgentState(TypedDict):
     input_data: Dict[str, Any]
     validated_data: Dict[str, Any]
@@ -32,9 +30,8 @@ class AgentState(TypedDict):
     auth_role: str
     errors: List[str]
 
-# ==========================================
 # 3. WORKFLOW NODES (STATE MACHINES)
-# ==========================================
+
 def authentication_and_validation_node(state: AgentState) -> Dict[str, Any]:
     """Implements Role-Based Authentication and Inconsistency Error Handling."""
     errors = []
@@ -73,9 +70,8 @@ def analysis_router_node(state: AgentState) -> Dict[str, Any]:
         
     return {"clinical_insights": insights}
 
-# ==========================================
 # 4. COMPILING THE GRAPH
-# ==========================================
+
 builder = StateGraph(AgentState)
 builder.add_node("authenticate_and_validate", authentication_and_validation_node)
 builder.add_node("generate_insights", analysis_router_node)

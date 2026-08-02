@@ -19,7 +19,6 @@ def call_gemini_with_retry(model, prompt, retries=5, delay=3):
     """
     for i in range(retries):
         try:
-            # Model call try karega
             response = model.generate_content(prompt)
             return response
         except ResourceExhausted as e:
@@ -52,7 +51,6 @@ def scrape_web_questions(topic_query: str) -> dict:
         from agent import HealthAgent
         agent = HealthAgent()
 
-    # Highly structured and highly direct optimized academic prompt setup
     prompt = f"""
     You are an expert clinical educator. Write a concise, high-yield diagnostic guide for: '{topic_query}'.
     Keep explanations extremely direct and fast to output. Use this strict structure:
@@ -81,7 +79,6 @@ def scrape_web_questions(topic_query: str) -> dict:
     delay = 3
     for i in range(retries):
         try:
-            # Running logic inside explicit resource monitoring wrapper
             raw_response = agent.respond([], prompt)
             st.session_state.miner_cache[topic_clean] = raw_response
             return {"raw_payload": raw_response}
@@ -92,7 +89,6 @@ def scrape_web_questions(topic_query: str) -> dict:
             else:
                 return {"error": "Google API Daily Quota Exceeded (429). Please try again later or add billing."}
         except Exception as e:
-            # Agar koi generic/network breakdown exception aata hai tab
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                 if i < retries - 1:
                     time.sleep(delay)
@@ -173,7 +169,6 @@ def generate_pdf_bytes(text_content: str) -> bytes:
     clean_text = text_content.replace("**", "").replace("###", "").replace("`", "").replace("---", "")
     
     for line in clean_text.split('\n'):
-        # Sirf non-empty valid characters ko printable margin width me render karega
         if line.strip():
             safe_line = line.encode('latin-1', 'replace').decode('latin-1').strip()
             # Explicit dynamic print range checking to ensure it fits horizontal bounds
@@ -189,11 +184,10 @@ def generate_pdf_bytes(text_content: str) -> bytes:
     pdf.set_text_color(148, 163, 184)
     pdf.set_x(140)
     pdf.cell(55, 5, txt="Authorized Digital Sign-Off Stamp", ln=True, align="C")
-    
-    # Agar aapka output string hai, toh use utf-8 mein encode karke bytes banayein:
+
     output = pdf.output(dest='S')
     if isinstance(output, str):
-        return output.encode('latin-1')  # FPDF ke liye 'latin-1' best rehta hai
+        return output.encode('latin-1')  
     return bytes(output)
 
 

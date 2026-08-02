@@ -13,18 +13,10 @@ import matplotlib.pyplot as plt
 import sqlite3 
 import io 
 import pytz
-import google.generativeai as genai
-
-
-from streamlit_autorefresh import st_autorefresh
-count = st_autorefresh(interval=30000, limit=None, key="reminder_refresh_counter")
-# ENVIRONMENT & PATH CONFIGURATION
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, "..", ".env")
 load_dotenv(dotenv_path=ENV_PATH)
 
-
-# Initialize DB safely on startup
 db.init_db()
 
 
@@ -33,8 +25,10 @@ def get_agent():
     return HealthAgent()
 
 
-if "chat_history" not in st.session_state: st.session_state.chat_history = []
-if "agent" not in st.session_state: st.session_state.agent = get_agent()
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+if "agent" not in st.session_state:
+    st.session_state.agent = get_agent()
 
 
 def generate_clean_pdf(text_content):
@@ -43,12 +37,10 @@ def generate_clean_pdf(text_content):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    # Multiline support
     for line in clean_text.split('\n'):
         pdf.multi_cell(0, 10, txt=line.encode('latin-1', 'replace').decode('latin-1'))
     return pdf.output(dest='S')
 
-# INITIALIZE INTERFACE WITH CUSTOM PREMIUM THEME
 st.set_page_config(
     page_title="CareAI - Pro Health Hub", 
     layout="wide",
@@ -102,22 +94,19 @@ st.markdown("""
 
 # UI Implementation Helper
 def glass_container():
-    return st.container() # Isko CSS class se link karne ke liye niche markdown use karein
-
+    return st.container() 
 st.title("🏥 CareAI: Pro Health Diagnostic Hub")
 st.markdown("<p style='color:#94A3B8; font-size:15px; margin-top:-15px;'>Enterprise Clinical Analytics, Automated Medicine Reminders & Patient Care Companion</p>", unsafe_allow_html=True)
 st.markdown("---")
 
 # Initialize persistent memory storage objects safely
-if "chat_history" not in st.session_state: st.session_state.chat_history = []
-if "agent" not in st.session_state: st.session_state.agent = HealthAgent()
 if "last_triggered_reminder" not in st.session_state: st.session_state.last_triggered_reminder = ""
 if "latest_report_insights" not in st.session_state: st.session_state.latest_report_insights = ""
 if "diet_fitness_plan" not in st.session_state: st.session_state.diet_fitness_plan = ""
 
-# ==========================================
+
 # MEDICINE ALARM POLLING ENGINE
-# ==========================================
+
 @st.fragment(run_every=10)
 def medicine_alarm_polling_engine():
     ist_timezone = pytz.timezone('Asia/Kolkata')
@@ -307,13 +296,11 @@ with col_dash:
                 st.success("File context loaded successfully!")
                 if st.button("Analyze Report with CareAI", type="primary"):
                     st.session_state.latest_report_insights = st.session_state.agent.analyze_medical_report(str(raw_text))
-                    st.rerun()
 
         if st.session_state.latest_report_insights:
             st.markdown("#### CareAI Generated Diagnostics View")
             st.info(st.session_state.latest_report_insights)
             
-            # bytearray ko strict bytes me cast karein
             pdf_data = bytes(health_tools.generate_pdf_bytes(st.session_state.latest_report_insights))
 
             st.download_button(
@@ -330,7 +317,6 @@ with col_dash:
         activity_level = st.selectbox("Current Daily Physical Activity Kitna Hai?", ["Sedentary", "Active", "Moderate"])
         diet_pref = st.radio("Dietary Preference:", ["Vegetarian 🥦", "Non-Vegetarian 🍗", "Vegan 🌱"])
 
-        # 1. Session state ko initialize karein agar pehle se nahi hai
         if "diet_fitness_plan" not in st.session_state:
             st.session_state.diet_fitness_plan = None
 
@@ -339,24 +325,20 @@ with col_dash:
                 try:
                     prompt = f"Act as a clinical nutritionist. Create a comprehensive and healthy diet plan for a person whose goal is {health_goal}, physical activity level is {activity_level}, and dietary preference is {diet_pref}."
                     
-                    model = genai.GenerativeModel('gemini-2.5-flash') 
-                    response = model.generate_content(prompt)
-                    
-                    if response and response.text:
-                        # 2. Response ko session state mein save karein taaki wo gayab na ho
-                        st.session_state.diet_fitness_plan = response.text
+                    ai_response = st.session_state.agent.respond([], prompt)
+                    if ai_response:
+                        st.session_state.diet_fitness_plan = ai_response
                     else:
                         st.warning("No response generated. Please try again.")
                         
                 except Exception as e:
                     st.error(f"Error generating plan: {str(e)}")
 
-        # 3. Agar session state mein plan available hai, toh use hamesha display karein
         if st.session_state.diet_fitness_plan:
             st.success("Here is your AI Diet Plan:")
             st.markdown(f'<div class="plan-box">{st.session_state.diet_fitness_plan}</div>', unsafe_allow_html=True)
 
-    # 5. FAST INTERACTIVE CLINICAL INSIGHT MINER PANEL
+    # FAST INTERACTIVE CLINICAL INSIGHT MINER PANEL
     with tab_scraper:
         st.markdown("### 🩺 Clinical Insight Miner Engine")
         st.caption("Kisi bhi medical topic ya disease condition ko search karein.")
@@ -375,7 +357,6 @@ with col_dash:
                     elif "raw_payload" in insights:
                         st.markdown(f"---")
                         st.subheader(f"🔎 Results for: {topic_input}")
-                        # CSS flex layout ke liye container
                         st.markdown(f"""
                             <div style="background: rgba(30, 41, 59, 0.5); padding: 20px; border-radius: 15px; border-left: 5px solid #38BDF8; color: #E2E8F0;">
                                 {insights['raw_payload']}
@@ -385,57 +366,62 @@ with col_dash:
     # 6. PROGRESS GRAPH CHANNEL PANEL
     with tab_analytics:
         st.markdown("### 📈 Live Visual Health Journey Tracker")
+        st.caption("This tab shows your recorded vitals history and connects to your latest lab report analysis when available.")
         conn = db.get_db_connection()
-        # Step 2: Data Fetching logic
         logs = conn.execute("SELECT log_date, systolic_bp, glucose FROM vitals_logs ORDER BY id ASC LIMIT 15").fetchall()
         conn.close()
     
         if logs:
             chart_data = pd.DataFrame(logs, columns=['Date', 'BP', 'Sugar'])
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 5.5), sharex=True)
-            fig.patch.set_facecolor('#0E1117') 
-            
-            ax1.set_facecolor('#1E2330')
-            ax1.plot(chart_data['Date'], chart_data['BP'], color='#38BDF8', marker='o', label='BP')
-            ax1.set_ylabel('BP (mmHg)', color='#FFFFFF')
-            ax1.tick_params(colors='#FFFFFF')
-            
-            ax2.set_facecolor('#1E2330')
-            ax2.plot(chart_data['Date'], chart_data['Sugar'], color='#F59E0B', marker='s', label='Sugar')
-            ax2.set_ylabel('Sugar (mg/dL)', color='#FFFFFF')
-            ax2.tick_params(colors='#FFFFFF')
-            
-            st.pyplot(fig)
-        else:
-            st.info("No logs found. Add vitals in Risk Lab to see the chart.")
+            chart_data['Date'] = pd.to_datetime(chart_data['Date'], errors='coerce')
+            if chart_data['Date'].isna().all():
+                chart_data['Date'] = chart_data['Date'].astype(str)
+            else:
+                chart_data = chart_data.sort_values('Date')
 
-        try:
-            import matplotlib.pyplot as plt
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 5.5), sharex=True)
-            fig.patch.set_facecolor('#0E1117') 
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 5.5), sharex=True)
+            fig.patch.set_facecolor('#0E1117')
             
             ax1.set_facecolor('#1E2330')
-            ax1.plot(chart_data['Date'], chart_data['BP'], color='#38BDF8', marker='o', linewidth=2.5, label='Aapka BP')
-            ax1.axhline(130, color='#EF4444', linestyle='--')
+            ax1.plot(chart_data['Date'], chart_data['BP'], color='#38BDF8', marker='o', linewidth=2.5, label='BP')
+            ax1.axhline(130, color='#EF4444', linestyle='--', linewidth=1)
             ax1.set_ylabel('BP (mmHg)', color='#FFFFFF')
-            ax1.tick_params(colors='#FFFFFF', labelsize=8)
-            ax1.grid(True, color='#2D3748', alpha=0.5)
+            ax1.tick_params(colors='#FFFFFF', labelsize=9)
+            ax1.grid(True, color='#2D3748', alpha=0.4)
+            ax1.legend(loc='upper left', facecolor='#0E1117', edgecolor='#334155', labelcolor='#FFFFFF')
             
             ax2.set_facecolor('#1E2330')
-            ax2.plot(chart_data['Date'], chart_data['Sugar'], color='#F59E0B', marker='s', linewidth=2.5, label='Aapka Sugar')
-            ax2.axhline(110, color='#EF4444', linestyle='--')
+            ax2.plot(chart_data['Date'], chart_data['Sugar'], color='#F59E0B', marker='s', linewidth=2.5, label='Sugar')
+            ax2.axhline(110, color='#EF4444', linestyle='--', linewidth=1)
             ax2.set_ylabel('Sugar (mg/dL)', color='#FFFFFF')
-            ax2.tick_params(colors='#FFFFFF', labelsize=8)
-            ax2.grid(True, color='#2D3748', alpha=0.5)
-            
+            ax2.tick_params(colors='#FFFFFF', labelsize=9)
+            ax2.grid(True, color='#2D3748', alpha=0.4)
+            ax2.legend(loc='upper left', facecolor='#0E1117', edgecolor='#334155', labelcolor='#FFFFFF')
+
+            if chart_data['Date'].dtype == 'datetime64[ns]':
+                fig.autofmt_xdate(rotation=30)
+                ax2.set_xlabel('Date', color='#FFFFFF')
+            else:
+                ax2.set_xlabel('Entry #', color='#FFFFFF')
+
             fig.tight_layout()
             st.pyplot(fig)
-        except Exception as e:
-            st.warning(f"Matplotlib setup note: {str(e)}")
 
-# ==========================================
+            if st.session_state.latest_report_insights:
+                st.markdown("---")
+                st.markdown("### 🧾 Latest Lab Report Insights")
+                st.info("This summary is based on the most recent lab report analysis you generated.")
+                st.write(st.session_state.latest_report_insights)
+        else:
+            st.info("No vitals logs found. Add data in Risk Lab to see your visual health trend.")
+            if st.session_state.latest_report_insights:
+                st.markdown("---")
+                st.markdown("### 🧾 Latest Lab Report Insights")
+                st.info("This summary is based on the most recent lab report analysis.")
+                st.write(st.session_state.latest_report_insights)
+
 # RIGHT COLUMN: AI CLINICAL ENGINE CHAT MODULE
-# ==========================================
+
 with col_chat:
     st.markdown("<h3 style='color:#F1F5F9;'>💬 Live Clinical AI Agent Chat</h3>", unsafe_allow_html=True)
     for role, text in st.session_state.chat_history:
@@ -453,4 +439,3 @@ with col_chat:
                 st.write(ai_response)
         
         st.session_state.chat_history.append(("assistant", ai_response))
-        st.rerun()

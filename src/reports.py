@@ -15,8 +15,7 @@ def generate_health_report_pdf(patient_id: str, bmi_val: float, bmi_cat: str, ri
     story = []
     
     styles = getSampleStyleSheet()
-    
-    # Custom Styling
+
     title_style = ParagraphStyle(
         'ReportTitle',
         parent=styles['Heading1'],
@@ -36,15 +35,12 @@ def generate_health_report_pdf(patient_id: str, bmi_val: float, bmi_cat: str, ri
     
     body_style = styles['BodyText']
     
-    # Title & Metadata
-    
     ist_timezone = pytz.timezone('Asia/Kolkata')
     story.append(Paragraph("CareAI Clinical Intelligence Summary Report", title_style))
     story.append(Paragraph(f"<b>Generated On:</b> {datetime.now(ist_timezone).strftime('%Y-%m-%d %H:%M')}", title_style))
     story.append(Paragraph(f"<b>Patient Identifier:</b> {patient_id}", body_style))
     story.append(Spacer(1, 15))
-    
-    # Vitals & Metrics Table
+
     story.append(Paragraph("1. Extracted Anthropometric & Risk Metrics", section_heading))
     data = [
         ['Metric Diagnostic Parameter', 'Recorded Value / Status'],
@@ -63,13 +59,11 @@ def generate_health_report_pdf(patient_id: str, bmi_val: float, bmi_cat: str, ri
     ]))
     story.append(t)
     story.append(Spacer(1, 15))
-    
-    # AI Clinical Insights
+
     story.append(Paragraph("2. CareAI Deep Clinical Analysis Insights", section_heading))
     story.append(Paragraph(clinical_insights.replace('\n', '<br/>'), body_style))
     story.append(Spacer(1, 20))
-    
-    # Legal Disclaimer
+
     disclaimer_style = ParagraphStyle('Disclaimer', parent=body_style, fontSize=8, textColor=colors.gray)
     story.append(Paragraph("<b>MANDATORY MEDICAL DISCLAIMER:</b> This document contains automated analysis powered by AI algorithms. It is strictly for educational and baseline monitoring integration purposes. It does NOT constitute medical advice. Please consult a qualified health professional immediately for clinical diagnostic validation.", disclaimer_style))
     

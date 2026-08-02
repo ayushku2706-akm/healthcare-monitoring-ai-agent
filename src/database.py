@@ -1,8 +1,7 @@
 import sqlite3
 import os
 
-# Sirf ek hi path rakho
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "health_companion.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "careai_health.db")
 
 def get_db_connection():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -14,7 +13,7 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Table 1: Vitals Logs (Analytics ke liye)
+    # Table 1: Vitals Logs 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS vitals_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,7 +23,7 @@ def init_db():
         )
     ''')
     
-    # Table 2: Medications (Scheduler ke liye)
+    # Table 2: Medications 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS medications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,7 +34,7 @@ def init_db():
         )
     ''')
     
-    # Table 3: Health Metrics (Additional tracking ke liye)
+    # Table 3: Health Metrics 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS health_metrics (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
