@@ -107,7 +107,7 @@ if "diet_fitness_plan" not in st.session_state: st.session_state.diet_fitness_pl
 
 # MEDICINE ALARM POLLING ENGINE
 
-@st.fragment(run_every=10)
+@st.fragment(run_every=5)
 def medicine_alarm_polling_engine():
     ist_timezone = pytz.timezone('Asia/Kolkata')
     current_ist_time = datetime.now(ist_timezone)
@@ -116,7 +116,6 @@ def medicine_alarm_polling_engine():
     with db.get_db_connection() as conn:
         active_meds = conn.execute("SELECT medication_name, dosage, reminder_time FROM medications WHERE is_active = 1").fetchall()
         
-
     for med in active_meds:
         if med['reminder_time'] == current_time_str:
             reminder_key = f"{med['medication_name']}_{current_time_str}"
@@ -124,20 +123,27 @@ def medicine_alarm_polling_engine():
             if st.session_state.last_triggered_reminder != reminder_key:
                 st.session_state.last_triggered_reminder = reminder_key
                 
-                st.error(f"🚨 **LIVE REMINDER ALARM:** It is exactly {current_time_str}! Take your **{med['medication_name']}** ({med['dosage']}).")
-                st.toast(f"🔔 MEDICATION ALARM: {med['medication_name']} NOW!", icon="🚨")
+                # Persistent visual alert box instead of fading toast
+                st.markdown(f"""
+                    <div style="background: rgba(239, 68, 68, 0.2); border: 2px solid #EF4444; padding: 15px; border-radius: 12px; margin-bottom: 15px;">
+                        <h3 style="color: #F87171; margin: 0;">🚨 LIVE REMINDER ALARM: {current_time_str}</h3>
+                        <p style="color: #F1F5F9; font-size: 16px; margin: 5px 0 0 0;">Time to take your <b>{med['medication_name']}</b> (Dosage: {med['dosage']}).</p>
+                    </div>
+                """, unsafe_allow_html=True)
                 
+                # Robust Audio & Persistent Browser Notification Script
                 st.components.v1.html(
-                    """
+                    f"""
                     <script>
-                        function triggerMedicalAlarm() {
+                        // 1. Play Web Audio Alarm Tone
+                        function triggerMedicalAlarm() {{
                             var AudioContext = window.AudioContext || window.webkitAudioContext;
                             if (!AudioContext) return;
                             var audioCtx = new AudioContext();
-                            var pulses = [0.0, 0.2, 0.4]; 
-                            var duration = 0.12; 
+                            var pulses = [0.0, 0.2, 0.4, 0.6]; 
+                            var duration = 0.15; 
                             
-                            pulses.forEach(function(delay) {
+                            pulses.forEach(function(delay) {{
                                 var osc1 = audioCtx.createOscillator();
                                 var osc2 = audioCtx.createOscillator();
                                 var gainNode = audioCtx.createGain();
@@ -146,16 +152,28 @@ def medicine_alarm_polling_engine():
                                 osc2.type = 'sine'; osc2.frequency.setValueAtTime(1318.51, audioCtx.currentTime + delay); 
                                 
                                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime + delay);
-                                gainNode.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + delay + 0.01);
-                                gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime + delay + duration - 0.02);
+                                gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + delay + 0.01);
+                                gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime + delay + duration - 0.02);
                                 gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + delay + duration);
                                 
                                 osc1.connect(gainNode); osc2.connect(gainNode); gainNode.connect(audioCtx.destination);
                                 osc1.start(audioCtx.currentTime + delay); osc2.start(audioCtx.currentTime + delay + duration);
                                 osc1.stop(audioCtx.currentTime + delay + duration + 0.05); osc2.stop(audioCtx.currentTime + delay + duration + 0.05);
-                            });
-                        }
-                        try { triggerMedicalAlarm(); } catch(e) { window.addEventListener('click', function() { triggerMedicalAlarm(); }, { once: true }); }
+                            }});
+                        }}
+                        try {{ triggerMedicalAlarm(); }} catch(e) {{}}
+
+                        // 2. Trigger Native Browser Push Notification (Stays on screen)
+                        if (window.Notification && Notification.permission !== "denied") {{
+                            Notification.requestPermission().then(permission => {{
+                                if (permission === "granted") {{
+                                    new Notification("💊 CareAI Medication Alarm", {{
+                                        body: "It is {current_time_str}! Take your {med['medication_name']} ({med['dosage']}).",
+                                        icon: "https://cdn-icons-png.flaticon.com/512/822/822143.png"
+                                    }});
+                                }}
+                            }});
+                        }}
                     </script>
                     """,
                     height=0,
