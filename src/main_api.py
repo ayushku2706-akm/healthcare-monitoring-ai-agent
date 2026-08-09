@@ -13,11 +13,21 @@ except ImportError:
     except ImportError:
         workflow_agent = None
 
+
+
 app = FastAPI(
     title="CareAI Enterprise Pipeline Backend (Track B)",
     description="HIPAA-Compliant High-Performance Healthcare Workflow Engine & AI Agent API",
     version="1.1.0"
 )
+
+@app.get("/")
+def read_root():
+    return {
+        "message": "Welcome to CareAI Enterprise Pipeline Backend!",
+        "documentation": "/docs",
+        "health_check": "/api/v1/health-check"
+    }
 
 app.add_middleware(
     CORSMiddleware,
