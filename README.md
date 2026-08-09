@@ -3,7 +3,7 @@
 CareAI is an advanced clinical intelligence and personal health companion designed to provide educational insights on medical research, symptom breakdowns, fitness planning, and medication tracking.
 
 ## Features
-- **Clinical Intelligence:** Uses Gemini 1.5 Flash (with fallback to 2.0 Flash) for reliable medical data processing.
+- **Clinical Intelligence:** Uses Gemini 2.5 Flash (with fallback to 2.0 Flash) for reliable medical data processing.
 - **Robust AI Workflow:** Implements LangGraph state management for complex clinical analysis.
 - **Enterprise-Grade API:** FastAPI-powered backend for seamless integration, featuring:
     - HIPAA-compliant logic structure.
