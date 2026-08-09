@@ -105,37 +105,6 @@ if "last_triggered_reminder" not in st.session_state: st.session_state.last_trig
 if "latest_report_insights" not in st.session_state: st.session_state.latest_report_insights = ""
 if "diet_fitness_plan" not in st.session_state: st.session_state.diet_fitness_plan = ""
 
-st.subheader("🩺 Process Health Log (FastAPI Integration)")
-
-with st.form("health_form"):
-    patient_id = st.text_input("Patient ID", "PAT_001")
-    role = st.selectbox("Role", ["Doctor", "Patient", "Caregiver"])
-    systolic_bp = st.number_input("Systolic BP", value=120)
-    glucose_level = st.number_input("Glucose Level", value=95)
-    
-    submitted = st.form_submit_button("Send to Backend API")
-    
-    if submitted:
-        url = "https://healthcare-monitoring-ai-agent-p3h9.onrender.com/api/v1/process-health-log"
-        payload = {
-            "patient_id": patient_id,
-            "role": role,
-            "systolic_bp": int(systolic_bp),
-            "glucose_level": int(glucose_level)
-        }
-        
-        try:
-            response = requests.post(url, json=payload)
-            if response.status_code == 200:
-                result = response.json()
-                st.success("Connected to FastAPI Backend Successfully!")
-                st.info(f"**Insights:** {result.get('insights')}")
-                st.write(f"**Authorized Role:** {result.get('role_authorized')}")
-            else:
-                st.error(f"Backend Error: {response.text}")
-        except requests.exceptions.ConnectionError:
-            st.error("FastAPI server is not running! Start uvicorn on port 8000.")
-
 # MEDICINE ALARM POLLING ENGINE
 
 @st.fragment(run_every=5)
