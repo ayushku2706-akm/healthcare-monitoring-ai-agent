@@ -14,26 +14,27 @@ load_dotenv(dotenv_path=ENV_PATH)
 
 class HealthAgent:
     def __init__(self):
-        primary_model = "gemini-2.5-flash"
-        fallback_model = "gemini-2.0-flash"
+        self.primary_model = "gemini-2.5-flash"
+        self.fallback_model = "gemini-2.0-flash"
         
         api_key = os.getenv("GOOGLE_API_KEY")
 
         if not api_key:
             raise ValueError("GOOGLE_API_KEY not found")
         
-        try:
-            self.llm = ChatGoogleGenerativeAI(
-                model=primary_model,
-                temperature=0.3,
-                google_api_key=api_key
-            )
-        except Exception:
-            self.llm = ChatGoogleGenerativeAI(
-                model=fallback_model,
-                temperature=0.3,
-                google_api_key=api_key
-            )
+        # Initialize primary LLM
+        self.llm = ChatGoogleGenerativeAI(
+            model=self.primary_model,
+            temperature=0.3,
+            google_api_key=api_key
+        )
+        
+        # Initialize fallback LLM
+        self.fallback_llm = ChatGoogleGenerativeAI(
+            model=self.fallback_model,
+            temperature=0.3,
+            google_api_key=api_key
+        )
         
         self.system_prompt = SystemMessage(content=(
             "You are CareAI, an advanced clinical intelligence and personal health companion. "
@@ -44,6 +45,17 @@ class HealthAgent:
             "covering symptoms, pathology, or drug information, you MUST provide comprehensive information clearly, "
             "but conclude with a mandatory, prominent, professional disclaimer advising the user to consult a physician."
         ))
+
+    def _invoke_with_fallback(self, messages_or_prompt):
+        """Helper method to try primary model first, then fallback to secondary model."""
+        try:
+            return self.llm.invoke(messages_or_prompt)
+        except Exception as primary_error:
+            try:
+                # Fallback model attempt
+                return self.fallback_llm.invoke(messages_or_prompt)
+            except Exception as fallback_error:
+                raise Exception(f"Primary error: {str(primary_error)} | Fallback error: {str(fallback_error)}")
 
     def generate_pdf_report(self, text_content, filename="Clinical_Report.pdf"):
         clean_text = text_content.replace("?", "").replace("--", "").replace("**", "")
@@ -64,9 +76,8 @@ class HealthAgent:
 
     def respond(self, chat_history, user_message):
         """
-        Processes conversation safely with robust error handling layers.
+        Processes conversation safely with robust error handling layers and fallback support.
         """
-        # Defensive Check: Verify if API key exists before making network request
         if not os.getenv("GOOGLE_API_KEY"):
             return (
                 "❌ **Configuration Error Detected:** Your `.env` file does not contain a valid `GOOGLE_API_KEY`. "
@@ -84,9 +95,8 @@ class HealthAgent:
                 
         messages.append(HumanMessage(content=user_message))
         
-        # CRITICAL LAYER: Catch API crashes gracefully instead of breaking the app
         try:
-            response = self.llm.invoke(messages)
+            response = self._invoke_with_fallback(messages)
             return response.content
         except Exception as e:
             return (
@@ -115,7 +125,7 @@ class HealthAgent:
         )
 
         try:
-            response = self.llm.invoke(prompt)
+            response = self._invoke_with_fallback(prompt)
             content = response.content
             content = content.replace("?", "").replace("--", "").replace("::", ":")
             return content
