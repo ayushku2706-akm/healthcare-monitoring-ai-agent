@@ -9,7 +9,7 @@ colorama==0.4.6
 cryptography==50.0.0
 fastapi==0.139.0
 filetype==1.2.0
-GitPython==3.1.57
+GitPython==3.1.58
 google-api-core==2.25.2
 google-auth==2.55.2
 google-genai==2.11.0
