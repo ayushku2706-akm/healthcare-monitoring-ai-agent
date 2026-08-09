@@ -1,4 +1,4 @@
-from typing import Annotated, Dict, Any, List
+from typing import Annotated, Dict, Any, List, Optional
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from pydantic import BaseModel, Field, field_validator
@@ -11,7 +11,7 @@ class HealthLogSchema(BaseModel):
     patient_id: str
     role: str = Field(..., description="Must be Patient, Doctor, or Caregiver")
     systolic_bp: int = Field(..., ge=60, le=250)
-    glucose_level: int = Field(..., ge=30, le=500)
+    glucose_level: Optional[int] = Field(default=None, ge=30, le=500)
     
     @field_validator('role')
     @classmethod
@@ -59,10 +59,13 @@ def analysis_router_node(state: AgentState) -> Dict[str, Any]:
         
     role = state["auth_role"]
     data = state["validated_data"]
+    glucose_text = ""
+    if data.get("glucose_level") is not None:
+        glucose_text = f" and Glucose of {data['glucose_level']} mg/dL"
     
     # Customize reporting insights based on access roles
     if role == "Doctor":
-        insights = f"[CLINICAL VIEW] Patient {data['patient_id']} displays BP of {data['systolic_bp']} and Glucose of {data['glucose_level']} mg/dL. Prescriptive actions unlocked."
+        insights = f"[CLINICAL VIEW] Patient {data['patient_id']} displays BP of {data['systolic_bp']}{glucose_text}. Prescriptive actions unlocked."
     elif role == "Caregiver":
         insights = f"[CAREGIVER VIEW] Monitoring metrics for Patient {data['patient_id']}. Vital parameters are logged."
     else:

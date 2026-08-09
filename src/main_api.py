@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Dict, Any, Optional
 import time
 
@@ -39,10 +39,26 @@ app.add_middleware(
 
 # Pydantic Schema for Strict Validation & Swagger Docs
 class HealthLogPayload(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "example": {
+                "patient_id": "PAT_001",
+                "role": "Doctor",
+                "systolic_bp": 120,
+                "glucose_level": 90,
+                "auth_token": "bearer_token_sample"
+            }
+        }
+    )
+
     patient_id: str = Field(..., example="PAT_001")
-    age: int = Field(..., example=30)
-    symptoms: list[str] = Field(..., example=["fever", "cough"])
-    vitals: Optional[Dict[str, Any]] = Field(default=None, example={"heart_rate": 78, "bp": "120/80"})
+    role: Optional[str] = Field(default="Patient", example="Doctor", description="Must be Patient, Doctor, or Caregiver")
+    systolic_bp: Optional[int] = Field(default=None, example=120, ge=60, le=250)
+    glucose_level: Optional[int] = Field(default=None, example=90, ge=30, le=500)
+    age: Optional[int] = Field(default=None, example=30)
+    symptoms: Optional[list[str]] = Field(default=None, example=["fever", "cough"])
+    vitals: Optional[Dict[str, Any]] = Field(default=None, example={"heart_rate": 78, "bp": "120/80", "glucose": 95})
     auth_token: Optional[str] = Field(default="bearer_token_sample", description="Role verification token")
 
 class PipelineResponse(BaseModel):
@@ -64,14 +80,43 @@ async def process_log(payload: HealthLogPayload):
     
     try:
         # Convert Pydantic model to dict for LangGraph State Engine
-        input_dict = payload.dict()
+        input_dict = payload.model_dump()
         
+        # Legacy compatibility support for older clients using `age`, `symptoms`, or generic `vitals`
+        if not input_dict.get("role"):
+            input_dict["role"] = "Patient"
+
+        vitals = input_dict.get("vitals") or {}
+        if input_dict.get("systolic_bp") is None and isinstance(vitals, dict):
+            systolic = vitals.get("systolic_bp") or vitals.get("bp")
+            if isinstance(systolic, str):
+                try:
+                    input_dict["systolic_bp"] = int(systolic.split("/")[0].strip())
+                except Exception:
+                    pass
+            elif isinstance(systolic, (int, float)):
+                input_dict["systolic_bp"] = int(systolic)
+
+        if input_dict.get("glucose_level") is None and isinstance(vitals, dict):
+            glucose = vitals.get("glucose_level") or vitals.get("glucose")
+            if isinstance(glucose, (int, float)):
+                input_dict["glucose_level"] = int(glucose)
+
+        if input_dict.get("systolic_bp") is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "msg": "Missing required clinical field: systolic_bp is required.",
+                    "received": input_dict
+                }
+            )
+
         # Invoke the LangGraph State Engine
         initial_state = {
-            "input_data": input_dict, 
-            "validated_data": {}, 
-            "clinical_insights": "", 
-            "auth_role": "Clinical_User", 
+            "input_data": input_dict,
+            "validated_data": {},
+            "clinical_insights": "",
+            "auth_role": "Clinical_User",
             "errors": []
         }
         
@@ -83,7 +128,7 @@ async def process_log(payload: HealthLogPayload):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, 
                 detail={
-                    "msg": "Health data inconsistency or Auth failure", 
+                    "msg": "Health data consistency or Auth failure", 
                     "logs": result["errors"], 
                     "pipeline_latency_ms": round(latency_ms, 2)
                 }
