@@ -66,7 +66,7 @@ def generate_clean_pdf(text_content):
 # PAGE CONFIG
 # ------------------------------------------------------------------
 st.set_page_config(
-    page_title="CareAI - Pro Health Hub",
+    page_title="CareAI | AI Healthcare Assistant, Medication Reminders & Medical Diagnostics",
     page_icon="🏥",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -1052,8 +1052,19 @@ def render_floating_chat_widget():
 def render_dashboard():
     page_header(
         "Welcome",
-        "🏥 CareAI Clinical Hub",
-        "A smarter, simpler way to stay connected with your medication reminders and AI-powered clinical tools."
+        "🏥 CareAI — AI Healthcare Assistant & Clinical Health Hub",
+        "CareAI is an AI-powered healthcare assistant with medication reminders, AI health diagnostics, medical research tools, lab report analysis, risk assessment and live clinical AI chat."
+    )
+
+    # Search-friendly introductory content. Keep this as real Streamlit text
+    # rather than hidden HTML so search engines can understand the app topic.
+    st.header("CareAI: AI Healthcare Assistant, Medication Reminders & Clinical Health Tools")
+    st.text(
+        "CareAI combines smart medication reminders, AI health diagnostics, medical research, "
+        "lab report analysis, health risk assessment, wellness planning and conversational AI "
+        "in one clinical health hub. Use CareAI to organize medications, explore health information "
+        "and access AI-powered clinical assistance. CareAI is an informational health assistant and "
+        "does not replace professional medical advice, diagnosis or treatment."
     )
 
     # ------------------------------------------------------------------
