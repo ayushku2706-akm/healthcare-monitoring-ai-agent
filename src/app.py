@@ -66,12 +66,10 @@ def generate_clean_pdf(text_content):
 # PAGE CONFIG
 # ------------------------------------------------------------------
 st.set_page_config(
-    page_title="CareAI | AI Healthcare Assistant, Medication Reminders & Medical Diagnostics",
+    page_title="CareAI Health | AI Healthcare Assistant & Clinical Health Hub",
     page_icon="🏥",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
-
 # ------------------------------------------------------------------
 # GLOBAL CSS — DARK CLINICAL GLASSMORPHISM
 # ------------------------------------------------------------------
