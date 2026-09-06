@@ -11,6 +11,14 @@ from fpdf import FPDF
 import time
 from google.api_core.exceptions import ResourceExhausted
 import pytz
+from langchain.tools import tool
+
+# Import database functions for SQLite persistence
+try:
+    from database import save_patient_report, get_latest_patient_report
+except ImportError:
+    from .database import save_patient_report, get_latest_patient_report
+
 
 def call_gemini_with_retry(model, prompt, retries=5, delay=3):
     """
@@ -27,7 +35,6 @@ def call_gemini_with_retry(model, prompt, retries=5, delay=3):
                 time.sleep(delay)
                 delay *= 2  
             else:
-               
                 raise e
 
 
@@ -191,6 +198,68 @@ def generate_pdf_bytes(text_content: str) -> bytes:
     return bytes(output)
 
 
+# ------------------------------------------------------------------
+# LANGCHAIN AGENT TOOLS (SQLITE INTEGRATION & CLINICAL METRICS)
+# ------------------------------------------------------------------
+
+@tool
+def save_patient_report_tool(patient_name: str, report_data: str, report_type: str = "lab_report") -> str:
+    """
+    Saves a parsed PDF report, prescription details, or medical history for a patient into the SQLite database.
+    Use this tool whenever a patient report is parsed or analyzed.
+    """
+    return save_patient_report(patient_name=patient_name, report_data=report_data, report_type=report_type)
+
+
+@tool
+def fetch_patient_report_tool(patient_name: str = "") -> str:
+    """
+    Fetches past lab reports, medical history, and clinical records for a given patient from the SQLite database.
+    If patient_name is empty or not specified, it retrieves the most recently uploaded medical report.
+    Use this tool whenever the user asks about an uploaded report, patient history, or lab results.
+    """
+    return get_latest_patient_report(patient_name=patient_name)
+
+
+def get_patient_report_context(patient_name: str = "") -> str:
+    """Return the latest SQLite report as normalized text for LLM context."""
+    report = get_latest_patient_report(patient_name=patient_name)
+
+    if not report:
+        return ""
+
+    if isinstance(report, str):
+        text = report.strip()
+        if text.lower() in {"no report found", "no patient report found", "none", "null"}:
+            return ""
+        return text
+
+    if isinstance(report, dict):
+        patient_name_value = report.get("patient_name", "Unknown Patient")
+        report_data = (
+            report.get("report_data")
+            or report.get("data")
+            or report.get("report")
+            or report.get("content")
+            or ""
+        )
+        if report_data:
+            return f"Patient Name: {patient_name_value}\n\nMedical Report:\n{report_data}"
+
+    return str(report).strip()
+
+
+@tool
+def get_patient_report_context_tool(patient_name: str = "") -> str:
+    """
+    Retrieves the latest patient medical report from SQLite in a format
+    suitable for direct use as AI context. Use for questions about uploaded
+    reports, lab results, or patient history.
+    """
+    return get_patient_report_context(patient_name=patient_name)
+
+
+@tool
 def calculate_detailed_bmi(weight_kg: float, height_cm: float, age_years: int) -> dict:
     """Calculates detailed BMI metrics including Ponderal Index, target weight, and ranges."""
     try:
@@ -214,7 +283,7 @@ def calculate_detailed_bmi(weight_kg: float, height_cm: float, age_years: int) -
         elif bmi > healthy_bmi_max:
             category = "Overweight"
             weight_to_change = round(weight_kg - healthy_weight_max, 1)
-            status_msg = f"Lose {weight_to_change} kg to reach a healthy BMI of {healthy_weight_max} kg/m²."
+            status_msg = f"Lose {weight_to_change} kg to reach a healthy BMI of {healthy_bmi_max} kg/m²."
         else:
             category = "Normal / Healthy Weight"
             status_msg = "Aapka weight bilkul healthy range mein hai!"
@@ -236,6 +305,7 @@ def calculate_detailed_bmi(weight_kg: float, height_cm: float, age_years: int) -
         return {"error": "Height must be greater than zero."}
 
 
+@tool
 def assess_cardio_risk(age: int, systolic_bp: int, fasting_glucose: int, smoker: bool) -> dict:
     """Calculates a predictive health risk score based on metabolic variables."""
     score = 0
@@ -259,3 +329,12 @@ def assess_cardio_risk(age: int, systolic_bp: int, fasting_glucose: int, smoker:
         "risk_strata": strata,
         "preventative_action": recommendation
     }
+
+# Exportable list of all tools for LangChain Agent initialization
+all_agent_tools = [
+    save_patient_report_tool,
+    fetch_patient_report_tool,
+    get_patient_report_context_tool,
+    calculate_detailed_bmi,
+    assess_cardio_risk
+]

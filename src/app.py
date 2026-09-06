@@ -8,6 +8,7 @@ from fpdf import FPDF
 from dotenv import load_dotenv
 import tools as health_tools
 import database as db
+from database import save_patient_report, get_latest_patient_report
 from agent import HealthAgent
 import matplotlib.pyplot as plt
 import sqlite3
@@ -50,6 +51,8 @@ if "diag_subpage" not in st.session_state:
     st.session_state.diag_subpage = "💬 Overview"
 if "chat_open" not in st.session_state:
     st.session_state.chat_open = False
+if "last_saved_report_key" not in st.session_state:
+    st.session_state.last_saved_report_key = ""
 
 
 def generate_clean_pdf(text_content):
@@ -66,10 +69,12 @@ def generate_clean_pdf(text_content):
 # PAGE CONFIG
 # ------------------------------------------------------------------
 st.set_page_config(
-    page_title="CareAI Health | AI Healthcare Assistant & Clinical Health Hub",
+    page_title="CareAI - Pro Health Hub",
     page_icon="🏥",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
 # ------------------------------------------------------------------
 # GLOBAL CSS — DARK CLINICAL GLASSMORPHISM
 # ------------------------------------------------------------------
@@ -993,6 +998,44 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+def get_patient_report_context():
+    """Fetch and normalize the latest patient report from SQLite for chat context."""
+    try:
+        report = get_latest_patient_report()
+
+        if not report:
+            return ""
+
+        if isinstance(report, str):
+            text = report.strip()
+            if not text or text.lower() in {
+                "no report found",
+                "no patient report found",
+                "none",
+                "null",
+            }:
+                return ""
+            return text
+
+        if isinstance(report, dict):
+            patient_name = report.get("patient_name", "Unknown Patient")
+            report_data = (
+                report.get("report_data")
+                or report.get("data")
+                or report.get("report")
+                or report.get("content")
+                or ""
+            )
+            if report_data:
+                return f"Patient Name: {patient_name}\n\nMedical Report:\n{report_data}"
+
+        return str(report).strip()
+
+    except Exception as e:
+        print(f"SQLite report context error: {e}")
+        return ""
+
+
 def render_floating_chat_widget():
     if not st.session_state.chat_open:
         # ---- Collapsed state: floating pill button only ----
@@ -1019,27 +1062,85 @@ def render_floating_chat_widget():
         chat_box = st.container(height=480, key="chat_scroll_box")
         with chat_box:
             if not st.session_state.chat_history:
-                st.caption("Ask a clinical question to get started.")
+                st.caption("Ask about your health or uploaded medical report.")
             for role, text in st.session_state.chat_history:
                 with st.chat_message(role):
                     st.write(text)
 
-        if user_query := st.chat_input("Query clinical definitions or insights...", key="floating_chat_input"):
+        if user_query := st.chat_input(
+            "Ask about your health or uploaded report...",
+            key="floating_chat_input"
+        ):
             st.session_state.chat_history.append(("user", user_query))
 
             with chat_box:
                 with st.chat_message("user"):
                     st.write(user_query)
+
                 with st.chat_message("assistant"):
-                    with st.spinner("Processing..."):
-                        context_history = st.session_state.chat_history[-4:]
-                        ai_response = st.session_state.agent.respond(context_history, user_query)
-                        st.write(ai_response)
+                    with st.spinner("Reviewing your health information..."):
+                        try:
+                            report_context = get_patient_report_context()
+                            context_history = st.session_state.chat_history[-6:]
+
+                            if report_context:
+                                contextual_query = f"""
+You are CareAI, a clinical AI assistant.
+
+A medical report was previously uploaded and saved in the patient's
+SQLite medical record. Use it when it is relevant to the user's question.
+
+IMPORTANT RULES:
+- Treat the report below as patient-specific context.
+- Do not invent, alter, or assume laboratory values.
+- If a value or finding is not present, say that it is not available.
+- Clearly distinguish report findings from general medical information.
+- Do not provide a definitive diagnosis.
+- For abnormal or concerning findings, recommend appropriate professional
+  medical review.
+- Answer the user's actual question directly and clearly.
+
+================ PATIENT REPORT ================
+{report_context}
+================ END PATIENT REPORT ================
+
+USER QUESTION:
+{user_query}
+"""
+                            else:
+                                contextual_query = f"""
+You are CareAI, a clinical AI assistant.
+
+No previously uploaded medical report was found in the SQLite patient
+record. Do not pretend that patient-specific laboratory data is available.
+Answer using general medical information and clearly state when patient
+specific information would be needed.
+
+USER QUESTION:
+{user_query}
+"""
+
+                            ai_response = st.session_state.agent.respond(
+                                context_history,
+                                contextual_query
+                            )
+                            st.write(ai_response)
+
+                        except Exception as e:
+                            ai_response = (
+                                "⚠️ I could not process your request right now.\n\n"
+                                f"Technical details: {str(e)}"
+                            )
+                            st.error(ai_response)
 
             st.session_state.chat_history.append(("assistant", ai_response))
 
         if st.session_state.chat_history:
-            if st.button("Clear conversation", key="floating_chat_clear", use_container_width=True):
+            if st.button(
+                "Clear conversation",
+                key="floating_chat_clear",
+                use_container_width=True
+            ):
                 st.session_state.chat_history = []
                 st.rerun()
 
@@ -1050,19 +1151,8 @@ def render_floating_chat_widget():
 def render_dashboard():
     page_header(
         "Welcome",
-        "🏥 CareAI — AI Healthcare Assistant & Clinical Health Hub",
-        "CareAI is an AI-powered healthcare assistant with medication reminders, AI health diagnostics, medical research tools, lab report analysis, risk assessment and live clinical AI chat."
-    )
-
-    # Search-friendly introductory content. Keep this as real Streamlit text
-    # rather than hidden HTML so search engines can understand the app topic.
-    st.header("CareAI: AI Healthcare Assistant, Medication Reminders & Clinical Health Tools")
-    st.text(
-        "CareAI combines smart medication reminders, AI health diagnostics, medical research, "
-        "lab report analysis, health risk assessment, wellness planning and conversational AI "
-        "in one clinical health hub. Use CareAI to organize medications, explore health information "
-        "and access AI-powered clinical assistance. CareAI is an informational health assistant and "
-        "does not replace professional medical advice, diagnosis or treatment."
+        "🏥 CareAI Clinical Hub",
+        "A smarter, simpler way to stay connected with your medication reminders and AI-powered clinical tools."
     )
 
     # ------------------------------------------------------------------
@@ -1417,48 +1507,356 @@ def render_diag_overview():
 def render_diag_risk_lab():
     with st.container(border=True):
         st.markdown("#### Predictive Metabolic Risk Assessment")
-        age = st.slider("Patient Age", 1, 100, 25)
-        sbp = st.slider("Systolic Blood Pressure (mmHg)", 90, 200, 120)
-        glucose = st.slider("Fasting Blood Glucose (mg/dL)", 60, 250, 95)
+        st.caption("Screening support only — this assessment does not replace a doctor's diagnosis.")
+
+        # -----------------------------
+        # INPUT RANGES
+        # -----------------------------
+        age = st.slider(
+            "Patient Age",
+            min_value=1,
+            max_value=100,
+            value=25,
+            help="Age in years."
+        )
+
+        sbp = st.slider(
+            "Systolic Blood Pressure (mmHg)",
+            min_value=70,
+            max_value=250,
+            value=120,
+            help="Typical adult resting systolic BP is around 90–120 mmHg."
+        )
+
+        glucose = st.slider(
+            "Fasting Blood Glucose (mg/dL)",
+            min_value=50,
+            max_value=300,
+            value=95,
+            help="For fasting glucose, approximately 70–99 mg/dL is generally considered normal for adults."
+        )
+
+        cholesterol = st.slider(
+            "Total Cholesterol (mg/dL)",
+            min_value=100,
+            max_value=400,
+            value=200,
+            help="Total cholesterol below 200 mg/dL is generally considered desirable."
+        )
+
         smoker = st.checkbox("Active Tobacco Consumer")
 
+        # -----------------------------
+        # NORMAL RANGE REFERENCE
+        # -----------------------------
+        st.markdown("### 📊 Reference Ranges")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Blood Pressure", f"{sbp} mmHg")
+            st.caption("Generally desirable: < 120 mmHg systolic")
+
+        with col2:
+            st.metric("Fasting Glucose", f"{glucose} mg/dL")
+            st.caption("Generally normal: 70–99 mg/dL")
+
+        with col3:
+            st.metric("Total Cholesterol", f"{cholesterol} mg/dL")
+            st.caption("Generally desirable: < 200 mg/dL")
+
+        # -----------------------------
+        # LIVE INPUT INTERPRETATION
+        # -----------------------------
+        st.markdown("### 🔎 Current Reading Interpretation")
+
+        # Blood Pressure
+        if sbp < 90:
+            st.warning(
+                "🟡 **Systolic BP is low.** "
+                "Low readings may be associated with dizziness, weakness or fainting, "
+                "especially if symptoms are present."
+            )
+        elif sbp < 120:
+            st.success(
+                "🟢 **Systolic BP is in a desirable range.**"
+            )
+        elif sbp < 130:
+            st.info(
+                "🟠 **Systolic BP is mildly elevated.** "
+                "Lifestyle monitoring and repeated measurements may be useful."
+            )
+        elif sbp < 140:
+            st.warning(
+                "🟠 **Systolic BP is elevated.** "
+                "Consider monitoring your blood pressure and discussing repeated "
+                "high readings with a healthcare professional."
+            )
+        elif sbp < 180:
+            st.error(
+                "🔴 **Systolic BP is significantly elevated.** "
+                "Medical evaluation is recommended, particularly if readings remain high."
+            )
+        else:
+            st.error(
+                "🚨 **Very high systolic BP.** "
+                "If this reading is repeated or accompanied by chest pain, severe headache, "
+                "breathing difficulty, weakness or vision changes, seek urgent medical care."
+            )
+
+        # Glucose
+        if glucose < 70:
+            st.warning(
+                "🟡 **Fasting glucose is low.** "
+                "This may indicate hypoglycemia and should be interpreted with symptoms "
+                "and medical context."
+            )
+        elif glucose <= 99:
+            st.success(
+                "🟢 **Fasting glucose is in the normal range.** "
+                "This is a reassuring reading."
+            )
+        elif glucose <= 125:
+            st.warning(
+                "🟠 **Fasting glucose is above the usual normal range.** "
+                "A repeat test and professional evaluation may be appropriate."
+            )
+        else:
+            st.error(
+                "🔴 **Fasting glucose is considerably elevated.** "
+                "Further medical evaluation is recommended."
+            )
+
+        # Cholesterol
+        if cholesterol < 200:
+            st.success(
+                "🟢 **Total cholesterol is in the desirable range.**"
+            )
+        elif cholesterol < 240:
+            st.warning(
+                "🟠 **Total cholesterol is borderline high.** "
+                "Discuss the result with a healthcare professional along with your "
+                "full lipid profile and other risk factors."
+            )
+        else:
+            st.error(
+                "🔴 **Total cholesterol is high.** "
+                "Medical evaluation and a complete lipid profile may be appropriate."
+            )
+
+        # Smoking
+        if smoker:
+            st.warning(
+                "🚬 **Active tobacco use detected.** "
+                "Tobacco use increases cardiovascular risk. Stopping tobacco is one "
+                "of the most effective ways to reduce that risk."
+            )
+        else:
+            st.success(
+                "🟢 **No active tobacco use reported.**"
+            )
+
+        # -----------------------------
+        # RISK EVALUATION
+        # -----------------------------
         if st.button("Execute Risk Evaluation", key="risk_eval_btn"):
-            risk = health_tools.assess_cardio_risk(age, sbp, glucose, smoker)
-            st.subheader(f"Risk Stratum: {risk['risk_strata']}")
 
-            if risk['risk_strata'] in ["High", "Very High"]:
-                st.error("⚠️ CRITICAL ALERT: Your vitals suggest high risk. Please consult a doctor immediately.")
+            try:
+                risk = health_tools.assess_cardio_risk.invoke({
+                    "age": age,
+                    "systolic_bp": sbp,
+                    "fasting_glucose": glucose,
+                    "cholesterol": cholesterol,
+                    "smoker": smoker
+                })
 
-            st.info(f"**Clinical Directive:** {risk['preventative_action']}")
+                risk_level = risk.get("risk_strata", "Unknown")
 
-            conn = db.get_db_connection()
-            conn.execute("INSERT INTO vitals_logs (systolic_bp, glucose) VALUES (?, ?)", (sbp, glucose))
-            conn.commit()
-            conn.close()
+                st.markdown("---")
+                st.markdown("### 🫀 Cardiovascular Risk Assessment")
+
+                # NORMAL / LOW RISK
+                if risk_level in ["Low", "Normal", "Very Low"]:
+                    st.success(
+                        f"🟢 **Risk Stratum: {risk_level}**\n\n"
+                        "The entered values do not indicate an obvious high-risk "
+                        "pattern based on this screening assessment."
+                    )
+
+                    st.info(
+                        "✅ **Good job!** Your entered readings are generally "
+                        "reassuring. Continue maintaining a balanced diet, regular "
+                        "physical activity, healthy sleep and routine health checkups."
+                    )
+
+                # MODERATE
+                elif risk_level in ["Moderate", "Medium", "Intermediate"]:
+                    st.warning(
+                        f"🟠 **Risk Stratum: {risk_level}**\n\n"
+                        "Some entered factors may increase cardiovascular risk. "
+                        "This does not mean that you have a disease."
+                    )
+
+                    st.info(
+                        "💡 **Recommended approach:** Monitor your readings, maintain "
+                        "healthy lifestyle habits and discuss persistent abnormal "
+                        "values with a healthcare professional."
+                    )
+
+                # HIGH
+                elif risk_level == "High":
+                    st.error(
+                        "⚠️ **Risk Stratum: High**"
+                    )
+
+                    st.warning(
+                        "Some of the entered cardiovascular/metabolic factors are "
+                        "substantially outside desirable ranges. Professional "
+                        "evaluation is recommended."
+                    )
+
+                # VERY HIGH
+                elif risk_level == "Very High":
+                    st.error(
+                        "🚨 **Risk Stratum: Very High**"
+                    )
+
+                    st.warning(
+                        "The combination of entered values suggests a potentially "
+                        "high-risk pattern. Please seek medical evaluation promptly. "
+                        "If severe symptoms are present, seek emergency care."
+                    )
+
+                else:
+                    st.info(f"Risk Stratum: {risk_level}")
+
+                # -----------------------------
+                # CLINICAL DIRECTIVE
+                # -----------------------------
+                if risk.get("preventative_action"):
+                    st.info(
+                        f"**Clinical Directive:** "
+                        f"{risk['preventative_action']}"
+                    )
+
+                # -----------------------------
+                # SAVE TO DATABASE
+                # -----------------------------
+                conn = db.get_db_connection()
+
+                conn.execute(
+                    "INSERT INTO vitals_logs "
+                    "(systolic_bp, glucose) VALUES (?, ?)",
+                    (sbp, glucose)
+                )
+
+                conn.commit()
+                conn.close()
+
+            except Exception as e:
+                st.error(
+                    f"Unable to complete risk evaluation: {e}"
+                )
+
+    # =========================================================
+    # LAB REPORT PARSER
+    # =========================================================
 
     with st.container(border=True):
         st.markdown("#### 📄 Lab Report Parser & PDF Results")
-        uploaded_file = st.file_uploader("Upload Medical Report (PDF / TXT)", type=["pdf", "txt"])
+
+        uploaded_file = st.file_uploader(
+            "Upload Medical Report (PDF / TXT)",
+            type=["pdf", "txt"]
+        )
+
         if uploaded_file is not None:
+
             file_bytes = uploaded_file.read()
+
             if uploaded_file.name.endswith(".pdf"):
                 import parsers
                 raw_text = parsers.extract_text_from_pdf(file_bytes)
             else:
-                raw_text = file_bytes.decode("utf-8", errors="ignore")
+                raw_text = file_bytes.decode(
+                    "utf-8",
+                    errors="ignore"
+                )
+
+            patient_name = st.text_input(
+                "Patient Name",
+                value="",
+                placeholder="Enter patient name",
+                key="lab_report_patient_name",
+            )
+
+            report_key = (
+                f"{uploaded_file.name}:"
+                f"{len(file_bytes)}:"
+                f"{hash(raw_text)}"
+            )
+
+            if (
+                raw_text.strip()
+                and "ERROR_SCANNED_IMAGE" not in raw_text
+                and report_key != st.session_state.last_saved_report_key
+            ):
+                try:
+                    save_patient_report(
+                        patient_name=patient_name.strip() or "Unknown Patient",
+                        report_data=raw_text,
+                        report_type="lab_report",
+                    )
+
+                    st.session_state.last_saved_report_key = report_key
+
+                    st.success(
+                        "✅ Report parsed and stored in SQLite memory!"
+                    )
+
+                except Exception as e:
+                    st.error(
+                        f"Unable to save parsed report: {e}"
+                    )
 
             if "ERROR_SCANNED_IMAGE" in raw_text:
-                st.error("⚠️ Scanned Image Layout: Clean text document load kijiye.")
+
+                st.error(
+                    "⚠️ Scanned Image Layout: "
+                    "Clean text document load kijiye."
+                )
+
             else:
-                st.success("File context loaded successfully!")
-                if st.button("Analyze Report with CareAI", type="primary"):
-                    st.session_state.latest_report_insights = st.session_state.agent.analyze_medical_report(str(raw_text))
+
+                st.success(
+                    "File context loaded successfully!"
+                )
+
+                if st.button(
+                    "Analyze Report with CareAI",
+                    type="primary"
+                ):
+                    st.session_state.latest_report_insights = (
+                        st.session_state.agent.analyze_medical_report(
+                            str(raw_text)
+                        )
+                    )
 
         if st.session_state.latest_report_insights:
-            st.markdown("#### CareAI Generated Diagnostics View")
-            st.info(st.session_state.latest_report_insights)
 
-            pdf_data = bytes(health_tools.generate_pdf_bytes(st.session_state.latest_report_insights))
+            st.markdown(
+                "#### CareAI Generated Diagnostics View"
+            )
+
+            st.info(
+                st.session_state.latest_report_insights
+            )
+
+            pdf_data = bytes(
+                health_tools.generate_pdf_bytes(
+                    st.session_state.latest_report_insights
+                )
+            )
 
             st.download_button(
                 label="📥 Download Hospital-Level Diagnostic PDF Report",
@@ -1469,25 +1867,656 @@ def render_diag_risk_lab():
 
 
 def render_diag_growth():
-    with st.container(border=True):
-        st.markdown("#### 🏃 Advanced BMI & Growth Percentile Calculator")
-        col_f1, col_f2, col_f3 = st.columns(3)
-        with col_f1:
-            age_yrs = st.number_input("Patient Age (Years)", min_value=2, max_value=120, value=22, key="fit_age")
-        with col_f2:
-            w_kg = st.number_input("Weight (kg)", min_value=5.0, max_value=250.0, value=65.0, key="fit_weight")
-        with col_f3:
-            h_cm = st.number_input("Height (cm)", min_value=50.0, max_value=250.0, value=170.0, key="fit_height")
+    import math
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Wedge, Circle
 
-        if st.button("Run Detailed BMI Analysis", type="primary", key="bmi_calc_btn"):
-            bmi_results = health_tools.calculate_detailed_bmi(w_kg, h_cm, age_yrs)
-            st.markdown("---")
-            st.info(
-                f"**BMI = {bmi_results['bmi']} kg/m²** ({bmi_results['category']})\n\n"
-                f"**Weight percentile:** {bmi_results['weight_percentile']} | **Height percentile:** {bmi_results['height_percentile']}\n\n"
-                f"**Healthy Weight Range:** {bmi_results['healthy_weight_range']}\n\n"
-                f"👉 **Action Plan:** {bmi_results['status_action']}"
+    # =========================================================
+    # BMI & GROWTH ASSESSMENT
+    # =========================================================
+
+    with st.container(border=True):
+
+        st.markdown("#### 🏃 Advanced BMI & Growth Assessment")
+
+        st.caption(
+            "BMI is a screening measure and should be interpreted "
+            "alongside other health factors. It does not diagnose disease."
+        )
+
+        # =====================================================
+        # PATIENT INPUTS
+        # =====================================================
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            age_yrs = st.number_input(
+                "Patient Age (Years)",
+                min_value=2,
+                max_value=120,
+                value=22,
+                step=1,
+                key="fit_age"
             )
+
+        with col2:
+            sex = st.selectbox(
+                "Sex",
+                ["Male", "Female"],
+                key="fit_sex"
+            )
+
+        with col3:
+            w_kg = st.number_input(
+                "Weight (kg)",
+                min_value=5.0,
+                max_value=250.0,
+                value=65.0,
+                step=0.1,
+                key="fit_weight"
+            )
+
+        with col4:
+            h_cm = st.number_input(
+                "Height (cm)",
+                min_value=50.0,
+                max_value=250.0,
+                value=170.0,
+                step=0.1,
+                key="fit_height"
+            )
+
+        # =====================================================
+        # CALCULATE
+        # =====================================================
+
+        if st.button(
+            "Run Detailed BMI Analysis",
+            type="primary",
+            key="bmi_calc_btn"
+        ):
+
+            # -------------------------------------------------
+            # VALIDATION
+            # -------------------------------------------------
+
+            if h_cm <= 0:
+                st.error("❌ Height must be greater than 0.")
+                return
+
+            if w_kg <= 0:
+                st.error("❌ Weight must be greater than 0.")
+                return
+
+            # -------------------------------------------------
+            # BASIC BMI
+            # -------------------------------------------------
+
+            height_m = h_cm / 100
+
+            bmi = w_kg / (height_m ** 2)
+
+            bmi = round(bmi, 1)
+
+            # =================================================
+            # ADULT BMI CATEGORY
+            # =================================================
+
+            if bmi < 18.5:
+
+                category = "Underweight"
+                status = "LOW"
+
+                status_message = (
+                    "Your BMI is below the usual healthy adult range. "
+                    "If this is unexpected or you are losing weight "
+                    "without trying, consider discussing it with a "
+                    "healthcare professional."
+                )
+
+            elif bmi < 25:
+
+                category = "Normal"
+                status = "NORMAL"
+
+                status_message = (
+                    "Your BMI is within the usual healthy adult range. "
+                    "Continue maintaining balanced nutrition, regular "
+                    "physical activity and healthy lifestyle habits."
+                )
+
+            elif bmi < 30:
+
+                category = "Overweight"
+                status = "ELEVATED"
+
+                status_message = (
+                    "Your BMI is above the usual healthy adult range. "
+                    "Focus on sustainable nutrition, regular physical "
+                    "activity and overall health."
+                )
+
+            elif bmi < 35:
+
+                category = "Obesity Class I"
+                status = "HIGH"
+
+                status_message = (
+                    "Your BMI is in the obesity range. Consider discussing "
+                    "your overall health and weight-management options "
+                    "with a healthcare professional."
+                )
+
+            elif bmi < 40:
+
+                category = "Obesity Class II"
+                status = "HIGH"
+
+                status_message = (
+                    "Your BMI is considerably above the usual healthy "
+                    "adult range. Professional health and weight-management "
+                    "guidance may be beneficial."
+                )
+
+            else:
+
+                category = "Obesity Class III"
+                status = "VERY HIGH"
+
+                status_message = (
+                    "Your BMI is substantially above the usual healthy "
+                    "adult range. A healthcare professional can assess "
+                    "your overall health and appropriate management options."
+                )
+
+            # =================================================
+            # HEALTHY BMI RANGE
+            # =================================================
+
+            healthy_bmi_low = 18.5
+            healthy_bmi_high = 24.9
+
+            # =================================================
+            # HEALTHY WEIGHT RANGE
+            # =================================================
+
+            healthy_weight_low = (
+                healthy_bmi_low * (height_m ** 2)
+            )
+
+            healthy_weight_high = (
+                healthy_bmi_high * (height_m ** 2)
+            )
+
+            healthy_weight_low = round(
+                healthy_weight_low,
+                1
+            )
+
+            healthy_weight_high = round(
+                healthy_weight_high,
+                1
+            )
+
+            # =================================================
+            # BMI PRIME
+            # =================================================
+
+            bmi_prime = round(
+                bmi / 25,
+                2
+            )
+
+            # =================================================
+            # PONDERAL INDEX
+            # =================================================
+
+            ponderal_index = (
+                w_kg / (height_m ** 3)
+            )
+
+            ponderal_index = round(
+                ponderal_index,
+                1
+            )
+
+            # =================================================
+            # RESULT HEADER
+            # =================================================
+
+            st.markdown("---")
+
+            st.markdown("### 📊 Result")
+
+            if category == "Normal":
+
+                st.success(
+                    f"**BMI = {bmi} kg/m²**   "
+                    f"({category})"
+                )
+
+            elif category == "Underweight":
+
+                st.warning(
+                    f"**BMI = {bmi} kg/m²**   "
+                    f"({category})"
+                )
+
+            elif category == "Overweight":
+
+                st.warning(
+                    f"**BMI = {bmi} kg/m²**   "
+                    f"({category})"
+                )
+
+            else:
+
+                st.error(
+                    f"**BMI = {bmi} kg/m²**   "
+                    f"({category})"
+                )
+
+            # =================================================
+            # COMPACT BMI GAUGE
+            # =================================================
+
+            fig, ax = plt.subplots(
+                figsize=(6, 3)
+            )
+
+            ax.set_aspect("equal")
+            ax.axis("off")
+
+            # -------------------------------------------------
+            # BMI SECTIONS
+            # -------------------------------------------------
+
+            sections = [
+                (10, 18.5, "#C62828", "Underweight"),
+                (18.5, 25, "#00843D", "Normal"),
+                (25, 30, "#FFD900", "Overweight"),
+                (30, 40, "#C62828", "Obesity"),
+                (40, 50, "#990000", "")
+            ]
+
+            min_bmi = 10
+            max_bmi = 50
+
+            # -------------------------------------------------
+            # BMI → ANGLE
+            # -------------------------------------------------
+
+            def bmi_to_angle(value):
+
+                value = max(
+                    min_bmi,
+                    min(value, max_bmi)
+                )
+
+                return 180 - (
+                    (value - min_bmi)
+                    /
+                    (max_bmi - min_bmi)
+                ) * 180
+
+            # -------------------------------------------------
+            # DRAW GAUGE
+            # -------------------------------------------------
+
+            for start, end, color, label in sections:
+
+                theta1 = bmi_to_angle(end)
+                theta2 = bmi_to_angle(start)
+
+                wedge = Wedge(
+                    (0, 0),
+                    1.0,
+                    theta1,
+                    theta2,
+                    width=0.30,
+                    facecolor=color,
+                    edgecolor="white",
+                    linewidth=1
+                )
+
+                ax.add_patch(wedge)
+
+            # =================================================
+            # CATEGORY LABELS
+            # =================================================
+
+            label_positions = [
+                (14.0, "Underweight"),
+                (21.7, "Normal"),
+                (27.5, "Overweight"),
+                (34.5, "Obesity")
+            ]
+
+            for value, label in label_positions:
+
+                angle = math.radians(
+                    bmi_to_angle(value)
+                )
+
+                x = (
+                    1.12 *
+                    math.cos(angle)
+                )
+
+                y = (
+                    1.12 *
+                    math.sin(angle)
+                )
+
+                ax.text(
+                    x,
+                    y,
+                    label,
+                    ha="center",
+                    va="center",
+                    fontsize=9
+                )
+
+            # =================================================
+            # SCALE VALUES
+            # =================================================
+
+            scale_values = [
+                18.5,
+                25,
+                30,
+                35,
+                40
+            ]
+
+            for value in scale_values:
+
+                angle = math.radians(
+                    bmi_to_angle(value)
+                )
+
+                x = (
+                    0.82 *
+                    math.cos(angle)
+                )
+
+                y = (
+                    0.82 *
+                    math.sin(angle)
+                )
+
+                ax.text(
+                    x,
+                    y,
+                    str(value),
+                    ha="center",
+                    va="center",
+                    fontsize=8
+                )
+
+            # =================================================
+            # NEEDLE
+            # =================================================
+
+            needle_angle = math.radians(
+                bmi_to_angle(bmi)
+            )
+
+            needle_x = (
+                0.72 *
+                math.cos(needle_angle)
+            )
+
+            needle_y = (
+                0.72 *
+                math.sin(needle_angle)
+            )
+
+            ax.annotate(
+                "",
+                xy=(needle_x, needle_y),
+                xytext=(0, 0),
+                arrowprops=dict(
+                    arrowstyle="-|>",
+                    linewidth=2,
+                    color="black"
+                )
+            )
+
+            # =================================================
+            # CENTER CIRCLE
+            # =================================================
+
+            center_circle = Circle(
+                (0, 0),
+                0.055,
+                facecolor="gray",
+                edgecolor="black"
+            )
+
+            ax.add_patch(
+                center_circle
+            )
+
+            # =================================================
+            # CENTER BMI
+            # =================================================
+
+            ax.text(
+                0,
+                -0.27,
+                f"BMI = {bmi}",
+                ha="center",
+                va="center",
+                fontsize=17,
+                fontweight="bold"
+            )
+
+            # =================================================
+            # LIMITS
+            # =================================================
+
+            ax.set_xlim(
+                -1.30,
+                1.30
+            )
+
+            ax.set_ylim(
+                -0.40,
+                1.25
+            )
+
+            # -------------------------------------------------
+            # DISPLAY COMPACT CHART
+            # -------------------------------------------------
+
+            st.pyplot(
+                fig,
+                use_container_width=False
+            )
+
+            plt.close(fig)
+
+            # =================================================
+            # DETAILED RESULTS
+            # =================================================
+
+            st.markdown("### 📋 Detailed Assessment")
+
+            detail_col1, detail_col2 = st.columns(2)
+
+            with detail_col1:
+
+                st.markdown(
+                    f"""
+                    **Patient Information**
+
+                    - Age: **{age_yrs} years**
+                    - Sex: **{sex}**
+                    - Height: **{h_cm:.1f} cm**
+                    - Weight: **{w_kg:.1f} kg**
+                    """
+                )
+
+            with detail_col2:
+
+                st.markdown(
+                    f"""
+                    **BMI Metrics**
+
+                    - BMI: **{bmi} kg/m²**
+                    - Category: **{category}**
+                    - BMI Prime: **{bmi_prime}**
+                    - Ponderal Index: **{ponderal_index} kg/m³**
+                    """
+                )
+
+            # =================================================
+            # HEALTHY RANGE
+            # =================================================
+
+            st.markdown("### ⚖️ Healthy Weight Reference")
+
+            st.info(
+                f"""
+                **Healthy BMI range:** 18.5 – 24.9 kg/m²
+
+                **Estimated healthy weight range for "
+                f"height {h_cm:.1f} cm:**
+                **{healthy_weight_low} – {healthy_weight_high} kg**
+                """
+            )
+
+            # =================================================
+            # INTERPRETATION
+            # =================================================
+
+            st.markdown("### 💡 Health Interpretation")
+
+            if status == "NORMAL":
+
+                st.success(
+                    f"""
+                    🟢 **Healthy BMI — Great result!**
+
+                    {status_message}
+
+                    Your current weight of **{w_kg:.1f} kg** is within
+                    the estimated healthy BMI-based weight range for
+                    your height.
+                    """
+                )
+
+                st.info(
+                    "✅ Maintain your current healthy habits with "
+                    "balanced nutrition, regular physical activity, "
+                    "adequate sleep and routine health checkups."
+                )
+
+            elif status == "LOW":
+
+                st.warning(
+                    f"""
+                    🟡 **BMI Below the Usual Healthy Range**
+
+                    {status_message}
+                    """
+                )
+
+                st.info(
+                    f"Your BMI-based healthy weight reference range "
+                    f"is approximately **{healthy_weight_low}–"
+                    f"{healthy_weight_high} kg** for your height."
+                )
+
+            elif status == "ELEVATED":
+
+                st.warning(
+                    f"""
+                    🟠 **BMI Above the Usual Healthy Range**
+
+                    {status_message}
+                    """
+                )
+
+                st.info(
+                    "Focus on sustainable lifestyle changes rather "
+                    "than rapid weight loss. BMI should be considered "
+                    "alongside waist circumference, muscle mass and "
+                    "other health factors."
+                )
+
+            elif status == "HIGH":
+
+                st.error(
+                    f"""
+                    🔴 **Higher BMI Category**
+
+                    {status_message}
+                    """
+                )
+
+            else:
+
+                st.error(
+                    f"""
+                    🚨 **Very High BMI Category**
+
+                    {status_message}
+                    """
+                )
+
+            # =================================================
+            # BMI PRIME EXPLANATION
+            # =================================================
+
+            with st.expander("ℹ️ What do these BMI metrics mean?"):
+
+                st.markdown(
+                    f"""
+                    **BMI:** {bmi} kg/m²
+
+                    BMI compares body weight with height and is mainly
+                    used as a screening measure.
+
+                    **BMI Prime:** {bmi_prime}
+
+                    BMI Prime is calculated as BMI ÷ 25. A value close
+                    to or below 1 indicates BMI near or below the
+                    standard upper boundary of 25 kg/m².
+
+                    **Ponderal Index:** {ponderal_index} kg/m³
+
+                    Ponderal Index relates body weight to the cube of
+                    height and can provide another size-adjusted
+                    measure.
+
+                    **Important:** These metrics should not be used
+                    alone to diagnose a medical condition.
+                    """
+                )
+
+            # =================================================
+            # AGE-SPECIFIC MESSAGE
+            # =================================================
+
+            if age_yrs < 20:
+
+                st.info(
+                    "ℹ️ **Pediatric/Adolescent Note:** For patients "
+                    "under 20 years, BMI should generally be interpreted "
+                    "using age- and sex-specific BMI-for-age percentiles "
+                    "rather than adult BMI categories."
+                )
+
+            else:
+
+                st.caption(
+                    f"Adult BMI calculation for the selected sex "
+                    f"({sex}) uses the standard BMI formula. Sex does "
+                    "not change the adult BMI mathematical formula."
+                )
 
 
 def render_diag_diet():
